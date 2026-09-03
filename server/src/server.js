@@ -94,12 +94,30 @@ app.use("/api/notifications", notificationRoutes);
 // Central error handling
 app.use(errorHandler);
 
+// Auto-seed database if empty
+import prisma from "./config/prisma.js";
+import { seedDatabase } from "../prisma/seed.js";
+
+async function checkAndSeedDatabase() {
+  try {
+    const adminCount = await prisma.user.count({ where: { role: "ADMIN" } });
+    if (adminCount === 0) {
+      console.log("🌱 Database uninitialized. Running automatic initial seed...");
+      await seedDatabase(prisma);
+      console.log("✓ Initial database setup complete.");
+    }
+  } catch (err) {
+    console.warn("⚠️ Database auto-seed check skipped or failed:", err.message);
+  }
+}
+
 // Start server
-app.listen(PORT, () => {
+app.listen(PORT, async () => {
   console.log(`=============================================`);
   console.log(`  🚀 TerraMatch Backend listening on port ${PORT}`);
   console.log(`  🔗 Healthcheck: http://localhost:${PORT}/api/health`);
   console.log(`=============================================`);
+  await checkAndSeedDatabase();
 });
 
 export default app;

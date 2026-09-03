@@ -1,9 +1,8 @@
 import { PrismaClient } from "@prisma/client";
 import bcrypt from "bcryptjs";
 
-const prisma = new PrismaClient();
-
-async function main() {
+export async function seedDatabase(prismaInstance) {
+  const prisma = prismaInstance || new PrismaClient();
   console.log("🌱 Starting TerraMatch Database Seeding...");
 
   // 1. Seed Initial Admin User
@@ -539,11 +538,14 @@ async function main() {
   console.log("🎉 TerraMatch database seed completed successfully!");
 }
 
-main()
-  .catch((e) => {
-    console.error("Seeding failed:", e);
-    process.exit(1);
-  })
-  .finally(async () => {
-    await prisma.$disconnect();
-  });
+if (process.argv[1] && process.argv[1].includes("seed.js")) {
+  const prisma = new PrismaClient();
+  seedDatabase(prisma)
+    .catch((e) => {
+      console.error("Seeding failed:", e);
+      process.exit(1);
+    })
+    .finally(async () => {
+      await prisma.$disconnect();
+    });
+}
