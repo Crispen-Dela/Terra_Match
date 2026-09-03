@@ -1,0 +1,398 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  CLIENT
+  LAND_OWNER
+  CONTRACTOR
+  ADMIN
+}
+
+enum UserStatus {
+  ACTIVE
+  SUSPENDED
+}
+
+enum VerificationStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum SupportTicketStatus {
+  NEW
+  IN_PROGRESS
+  RESOLVED
+}
+
+enum LandCategory {
+  Residential
+  Commercial
+  Industrial
+  Agricultural
+}
+
+enum FloodRisk {
+  LOW
+  MODERATE
+  HIGH
+}
+
+enum TerrainType {
+  FLAT
+  SLOPED
+  ELEVATED
+}
+
+enum DrainageQuality {
+  GOOD
+  MODERATE
+  POOR
+}
+
+enum ListingStatus {
+  DRAFT
+  ACTIVE
+  PENDING_REVIEW
+  SOLD
+  EXPIRED
+}
+
+enum BidStatus {
+  ACTIVE
+  ACCEPTED
+  REJECTED
+  OUTBID
+}
+
+enum ProjectStatus {
+  OPEN
+  IN_PROGRESS
+  COMPLETED
+  CLOSED
+}
+
+enum ProjectBidStatus {
+  PENDING
+  ACCEPTED
+  REJECTED
+}
+
+enum NotificationType {
+  LAND_BID_UPDATE
+  AI_CONTRACTOR_MATCH
+  NEW_PROJECT_LEAD
+  NEW_REVIEW
+  SYSTEM_ALERT
+}
+
+model User {
+  id                 String     @id @default(uuid())
+  firebaseUid        String?    @unique
+  email              String     @unique
+  name               String
+  phone              String?
+  role               Role       @default(CLIENT)
+  status             UserStatus @default(ACTIVE)
+  passwordHash       String?
+  emailVerified      Boolean    @default(false)
+  ghanaCardVerified  Boolean    @default(false)
+  avatarUrl          String?
+  subscriptionPlan   String     @default("FREE")
+  planExpiresAt      DateTime?
+  createdAt          DateTime   @default(now())
+  updatedAt          DateTime   @updatedAt
+
+  contractorProfile  ContractorProfile?
+  landListings       LandListing[]      @relation("UserLands")
+  landBids           LandBid[]          @relation("UserLandBids")
+  projects           ConstructionProject[] @relation("UserProjects")
+  projectBids        ProjectBid[]       @relation("ContractorProjectBids")
+  verifications      GhanaCardVerification[] @relation("UserVerifications")
+  reviewedVerifications GhanaCardVerification[] @relation("AdminReviewedVerifications")
+  writtenReviews     Review[]           @relation("UserReviewsWritten")
+  contractorReviews  Review[]           @relation("ContractorReviewsReceived")
+  buyerConversations Conversation[]     @relation("BuyerConversations")
+  sellerConversations Conversation[]    @relation("SellerConversations")
+  sentMessages       Message[]          @relation("SentMessages")
+  notifications      Notification[]     @relation("UserNotifications")
+  auditLogs          AuditLog[]         @relation("AdminAuditLogs")
+  supportTickets     SupportTicket[]    @relation("UserSupportTickets")
+  supportReplies     SupportReply[]     @relation("UserSupportReplies")
+
+  @@index([email])
+  @@index([role])
+}
+
+model ContractorProfile {
+  id                String   @id @default(uuid())
+  userId            String   @unique
+  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  companyName       String
+  category          String
+  specialties       String
+  bio               String?
+  location          String   @default("Accra, Ghana")
+  yearsExperience   Int      @default(1)
+  licenseType       String?  @default("D1K1 General Building")
+  serviceAreas      Json?    // array of string regions
+  portfolio         Json?    // array of portfolio project objects
+  avgRating         Float    @default(5.0)
+  reviewCount       Int      @default(0)
+  completedProjects Int      @default(0)
+  isVerified        Boolean  @default(false)
+  verifiedAt        DateTime?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@index([category])
+  @@index([avgRating])
+  @@index([isVerified])
+}
+
+model LandListing {
+  id               String        @id @default(uuid())
+  slug             String        @unique
+  ownerId          String
+  owner            User          @relation("UserLands", fields: [ownerId], references: [id], onDelete: Cascade)
+  title            String
+  category         LandCategory  @default(Residential)
+  description      String
+  region           String        @default("Greater Accra")
+  district         String?
+  address          String
+  latitude         Float?
+  longitude        Float?
+  landSize         String        @default("1 Plot")
+  plotSize         String?       @default("100 x 70 ft")
+  tenure           String?       @default("Freehold")
+  ownershipType    String?       @default("Titled")
+  titleDocRef      String?
+  pricePerSqFt     Float?
+  totalPrice       Float
+  buyNowPrice      Float?
+  amenities        Json?         // array of amenity strings/objects
+  images           Json?         // array of image URLs
+  documents        Json?         // array of document metadata
+  floodRisk        FloodRisk     @default(LOW)
+  terrainType      TerrainType   @default(FLAT)
+  drainageQuality  DrainageQuality @default(GOOD)
+  elevationMeters  Float?        @default(45.0)
+  status           ListingStatus @default(ACTIVE)
+  auctionEndsAt    DateTime?
+  currentBid       Float?
+  minNextBid       Float?
+  bidIncrement     Float?        @default(5000)
+  bidsCount        Int           @default(0)
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
+
+  bids             LandBid[]
+  reviews          Review[]
+  conversations    Conversation[]
+
+  @@index([region])
+  @@index([category])
+  @@index([status])
+  @@index([totalPrice])
+}
+
+model LandBid {
+  id        String    @id @default(uuid())
+  landId    String
+  land      LandListing @relation(fields: [landId], references: [id], onDelete: Cascade)
+  bidderId  String
+  bidder    User      @relation("UserLandBids", fields: [bidderId], references: [id], onDelete: Cascade)
+  amount    Float
+  status    BidStatus @default(ACTIVE)
+  createdAt DateTime  @default(now())
+
+  @@index([landId])
+  @@index([bidderId])
+  @@index([amount])
+}
+
+model ConstructionProject {
+  id           String        @id @default(uuid())
+  slug         String        @unique
+  clientId     String
+  client       User          @relation("UserProjects", fields: [clientId], references: [id], onDelete: Cascade)
+  title        String
+  category     String
+  description  String
+  budgetRange  String
+  budgetMin    Float?
+  budgetMax    Float?
+  timeline     String
+  location     String
+  images       Json?         // array of image URLs
+  attachments  Json?         // array of document attachments
+  status       ProjectStatus @default(OPEN)
+  bidsCount    Int           @default(0)
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+
+  bids         ProjectBid[]
+  conversations Conversation[]
+
+  @@index([category])
+  @@index([status])
+}
+
+model ProjectBid {
+  id                String           @id @default(uuid())
+  projectId         String
+  project           ConstructionProject @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  contractorId      String
+  contractor        User             @relation("ContractorProjectBids", fields: [contractorId], references: [id], onDelete: Cascade)
+  bidAmount         Float
+  estimatedDuration String?
+  proposalText      String
+  status            ProjectBidStatus @default(PENDING)
+  createdAt         DateTime         @default(now())
+
+  @@index([projectId])
+  @@index([contractorId])
+}
+
+model GhanaCardVerification {
+  id              String             @id @default(uuid())
+  userId          String
+  user            User               @relation("UserVerifications", fields: [userId], references: [id], onDelete: Cascade)
+  cardNumber      String
+  fullNameOnCard  String
+  region          String
+  cardPhotoUrl    String?
+  aiAnalysisScore Float?             @default(95.0)
+  aiRiskFlags     Json?              // e.g. ["Valid Check Digit", "Format Verified"]
+  status          VerificationStatus @default(PENDING)
+  rejectionReason String?
+  reviewedById    String?
+  reviewedBy      User?              @relation("AdminReviewedVerifications", fields: [reviewedById], references: [id])
+  reviewedAt      DateTime?
+  createdAt       DateTime           @default(now())
+  updatedAt       DateTime           @updatedAt
+
+  @@index([userId])
+  @@index([status])
+}
+
+model Review {
+  id           String       @id @default(uuid())
+  authorId     String
+  author       User         @relation("UserReviewsWritten", fields: [authorId], references: [id], onDelete: Cascade)
+  contractorId String?
+  contractor   User?        @relation("ContractorReviewsReceived", fields: [contractorId], references: [id], onDelete: Cascade)
+  landId       String?
+  land         LandListing? @relation(fields: [landId], references: [id], onDelete: Cascade)
+  rating       Float        @default(5.0)
+  comment      String
+  createdAt    DateTime     @default(now())
+
+  @@index([contractorId])
+  @@index([landId])
+}
+
+model Conversation {
+  id             String       @id @default(uuid())
+  landId         String?
+  land           LandListing? @relation(fields: [landId], references: [id], onDelete: SetNull)
+  projectId      String?
+  project        ConstructionProject? @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  buyerId        String
+  buyer          User         @relation("BuyerConversations", fields: [buyerId], references: [id], onDelete: Cascade)
+  sellerId       String
+  seller         User         @relation("SellerConversations", fields: [sellerId], references: [id], onDelete: Cascade)
+  lastMessageAt  DateTime     @default(now())
+  createdAt      DateTime     @default(now())
+
+  messages       Message[]
+
+  @@unique([landId, buyerId, sellerId])
+  @@index([buyerId])
+  @@index([sellerId])
+}
+
+model Message {
+  id             String       @id @default(uuid())
+  conversationId String
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  senderId       String
+  sender         User         @relation("SentMessages", fields: [senderId], references: [id], onDelete: Cascade)
+  body           String
+  isRead         Boolean      @default(false)
+  createdAt      DateTime     @default(now())
+
+  @@index([conversationId])
+  @@index([senderId])
+}
+
+model Notification {
+  id          String           @id @default(uuid())
+  recipientId String
+  recipient   User             @relation("UserNotifications", fields: [recipientId], references: [id], onDelete: Cascade)
+  role        Role
+  message     String
+  type        NotificationType
+  isRead      Boolean          @default(false)
+  createdAt   DateTime         @default(now())
+
+  @@index([recipientId])
+  @@index([isRead])
+  @@index([createdAt])
+}
+
+model AuditLog {
+  id          String   @id @default(uuid())
+  adminId     String?
+  admin       User?    @relation("AdminAuditLogs", fields: [adminId], references: [id], onDelete: SetNull)
+  action      String
+  resource    String
+  details     String?
+  createdAt   DateTime @default(now())
+
+  @@index([adminId])
+  @@index([action])
+  @@index([createdAt])
+}
+
+model SupportTicket {
+  id          String              @id @default(uuid())
+  userId      String?
+  user        User?               @relation("UserSupportTickets", fields: [userId], references: [id], onDelete: SetNull)
+  name        String?
+  email       String
+  subject     String
+  category    String
+  message     String
+  status      SupportTicketStatus @default(NEW)
+  createdAt   DateTime            @default(now())
+  updatedAt   DateTime            @updatedAt
+
+  replies     SupportReply[]
+
+  @@index([userId])
+  @@index([status])
+  @@index([category])
+  @@index([createdAt])
+}
+
+model SupportReply {
+  id          String        @id @default(uuid())
+  ticketId    String
+  ticket      SupportTicket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  senderId    String
+  sender      User          @relation("UserSupportReplies", fields: [senderId], references: [id], onDelete: Cascade)
+  message     String
+  createdAt   DateTime      @default(now())
+
+  @@index([ticketId])
+  @@index([senderId])
+}
+
