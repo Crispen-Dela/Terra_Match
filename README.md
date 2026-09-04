@@ -1,4 +1,4 @@
-# TerraMatch — Landing Page
+# TerraMatch
 
 React (Vite) + Tailwind implementation of the TerraMatch landing page, built
 to match the supplied screenshots section-by-section.
