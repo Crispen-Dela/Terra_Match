@@ -40,8 +40,10 @@ export default function ContractorProfilePage() {
   const profile = contractor
     ? {
         id: contractor.id,
+        userId: contractor.userId || contractor.id,
         name: contractor.name || "Contractor Profile",
         shortName: (contractor.name || "").split(" ")[0] || "Contractor",
+
         verified: contractor.verified ?? true,
         location: contractor.location || "Accra, Greater Accra",
         category: contractor.category || "Building & Construction",

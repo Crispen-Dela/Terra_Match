@@ -30,7 +30,9 @@ export default function DashboardHeader({
   profileCompletion = 100,
   onOpenPlans,
   roleLabel = "VERIFIED LAND OWNER",
+  editProfileTo,
 }) {
+
   const [imgError, setImgError] = useState(false);
   const isVerified = verification?.status === "VERIFIED" || user?.ghanaCardVerified || true;
 
@@ -129,7 +131,7 @@ export default function DashboardHeader({
 
           <div className="flex items-center gap-2.5">
             <Link
-              to="/profile"
+              to={editProfileTo || "/profile"}
               className="inline-flex items-center rounded-xl bg-[#144737] border border-emerald-700/40 px-4 py-2 text-xs font-bold text-white transition hover:bg-[#1c5a47] shadow-xs"
             >
               Edit Profile
@@ -141,6 +143,7 @@ export default function DashboardHeader({
               Messages
             </Link>
           </div>
+
         </div>
       </div>
     </div>

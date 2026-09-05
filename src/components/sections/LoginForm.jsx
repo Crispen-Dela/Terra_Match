@@ -1,6 +1,8 @@
 import { useState, useEffect } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useAuth, getRoleDestination, toFrontendRole } from "../../context/AuthContext";
+import { contractorApi } from "../../services/contractorApi";
+
 
 // ── Slideshow images (dedicated auth panel slides) ─────────────
 import slide1 from "../../assets/images/auth-slide1.jpg";
@@ -332,7 +334,19 @@ export default function LoginForm() {
     try {
       const user = await login({ email: formData.email, password: formData.password });
       const frontendRole = toFrontendRole(user.role);
-      const destination = location.state?.from || getRoleDestination(frontendRole);
+      let destination = location.state?.from || getRoleDestination(frontendRole);
+
+      if (user.role === "CONTRACTOR" || frontendRole === "contractor") {
+        try {
+          const status = await contractorApi.getProfileStatus();
+          if (status && !status.isComplete) {
+            destination = "/complete-contractor-profile";
+          }
+        } catch {
+          // fallback to destination
+        }
+      }
+
       navigate(destination, { replace: true });
     } catch (err) {
       setFormError(err.message || "Couldn't log in. Please check your details and try again.");
@@ -340,6 +354,7 @@ export default function LoginForm() {
       setIsSubmitting(false);
     }
   }
+
 
   async function handleSendReset(e) {
     e.preventDefault();

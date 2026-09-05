@@ -210,49 +210,65 @@ function Breadcrumb({ contractor }) {
 /* ================================================================ */
 
 function ProfileHeader({ contractor }) {
+  const { user } = useAuth();
   const [imgError, setImgError] = useState(false);
   const stats = contractor?.stats || [];
+  const isOwner = Boolean(user && (user.id === contractor?.userId || user.id === contractor?.id));
 
   return (
     <div className="rounded-2xl border border-ink-900/10 bg-white p-6">
-      <div className="flex items-start gap-4">
-        <div className="relative shrink-0">
-          {(contractor?.image || contractor?.avatarUrl) && !imgError ? (
-            <img
-              src={contractor?.image || contractor?.avatarUrl}
-              alt={contractor?.name || "Contractor Profile"}
-              className="h-20 w-20 rounded-full object-cover bg-mist-100"
-              onError={() => setImgError(true)}
-            />
-          ) : (
-            <div className="flex h-20 w-20 items-center justify-center rounded-full bg-forest-100 text-2xl font-bold text-forest-700">
-              {(contractor?.name || "C")[0].toUpperCase()}
-            </div>
-          )}
-          {contractor?.verified && (
-            <span className="absolute -bottom-1 -right-1 flex h-6 w-6 items-center justify-center rounded-full bg-forest-600 ring-2 ring-white">
-              <CheckIcon className="h-3.5 w-3.5 text-white" />
-            </span>
-          )}
-        </div>
-
-        <div className="min-w-0">
-          <div className="flex flex-wrap items-center gap-2">
-            <h1 className="text-xl font-extrabold text-ink-900 sm:text-2xl">{contractor?.name}</h1>
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+        <div className="flex items-start gap-4">
+          <div className="relative shrink-0">
+            {(contractor?.image || contractor?.avatarUrl) && !imgError ? (
+              <img
+                src={contractor?.image || contractor?.avatarUrl}
+                alt={contractor?.name || "Contractor Profile"}
+                className="h-20 w-20 rounded-full object-cover bg-mist-100"
+                onError={() => setImgError(true)}
+              />
+            ) : (
+              <div className="flex h-20 w-20 items-center justify-center rounded-full bg-forest-100 text-2xl font-bold text-forest-700">
+                {(contractor?.name || "C")[0].toUpperCase()}
+              </div>
+            )}
             {contractor?.verified && (
-              <span className="inline-flex items-center gap-1 rounded-full bg-forest-600 px-2 py-0.5 text-[11px] font-semibold text-white">
-                <CheckIcon className="h-3 w-3" /> Verified
+              <span className="absolute -bottom-1 -right-1 flex h-6 w-6 items-center justify-center rounded-full bg-forest-600 ring-2 ring-white">
+                <CheckIcon className="h-3.5 w-3.5 text-white" />
               </span>
             )}
           </div>
-          <p className="mt-1 flex items-center gap-1.5 text-sm text-ink-500">
-            <MapPinIcon className="h-4 w-4" />
-            {contractor?.location || "Accra, Ghana"}
-          </p>
-          <span className="mt-2 inline-block rounded-full border border-ink-900/15 px-3 py-1 text-xs font-semibold text-ink-700">
-            {contractor?.category || "Building & Construction"}
-          </span>
+
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-2">
+              <h1 className="text-xl font-extrabold text-ink-900 sm:text-2xl">{contractor?.name}</h1>
+              {contractor?.verified && (
+                <span className="inline-flex items-center gap-1 rounded-full bg-forest-600 px-2 py-0.5 text-[11px] font-semibold text-white">
+                  <CheckIcon className="h-3 w-3" /> Verified
+                </span>
+              )}
+            </div>
+            <p className="mt-1 flex items-center gap-1.5 text-sm text-ink-500">
+              <MapPinIcon className="h-4 w-4" />
+              {contractor?.location || "Accra, Ghana"}
+            </p>
+            <span className="mt-2 inline-block rounded-full border border-ink-900/15 px-3 py-1 text-xs font-semibold text-ink-700">
+              {contractor?.category || "Building & Construction"}
+            </span>
+          </div>
         </div>
+
+        {isOwner && (
+          <Button
+            as={Link}
+            to="/complete-contractor-profile"
+            variant="secondary"
+            size="sm"
+            className="shrink-0 self-start sm:self-auto"
+          >
+            Edit Profile & Portfolio
+          </Button>
+        )}
       </div>
 
       <p className="mt-4 text-sm leading-relaxed text-ink-700">{contractor?.bio}</p>
@@ -278,6 +294,7 @@ function ProfileHeader({ contractor }) {
     </div>
   );
 }
+
 
 /* ================================================================ */
 /* Verification status (right column, top)                           */
@@ -449,41 +466,258 @@ function ContactCard({ contractor, slug }) {
 }
 
 /* ================================================================ */
-/* Portfolio                                                          */
+/* Portfolio & Lightbox Image Viewer                                */
 /* ================================================================ */
 
-function PortfolioCard({ project }) {
+function LightboxModal({ isOpen, onClose, images = [], initialIndex = 0, projectTitle = "" }) {
+  const [currentIndex, setCurrentIndex] = useState(initialIndex);
+
+  useEffect(() => {
+    setCurrentIndex(initialIndex);
+  }, [initialIndex, isOpen]);
+
+  useEffect(() => {
+    function handleKeyDown(e) {
+      if (!isOpen) return;
+      if (e.key === "Escape") onClose();
+      else if (e.key === "ArrowLeft") handlePrev();
+      else if (e.key === "ArrowRight") handleNext();
+    }
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [isOpen, currentIndex, images.length]);
+
+  if (!isOpen || images.length === 0) return null;
+
+  function handlePrev() {
+    setCurrentIndex((prev) => (prev > 0 ? prev - 1 : images.length - 1));
+  }
+
+  function handleNext() {
+    setCurrentIndex((prev) => (prev < images.length - 1 ? prev + 1 : 0));
+  }
+
   return (
-    <div className="w-64 shrink-0 overflow-hidden rounded-xl border border-ink-900/10 bg-white shadow-card">
-      <img
-        src={project.image}
-        alt={project.title}
-        loading="lazy"
-        className="aspect-[4/3] w-full bg-mist-100 object-cover"
-      />
-      <div className="p-3">
-        <p className="text-sm font-semibold text-ink-900">{project.title}</p>
-        <p className="mt-1 text-xs leading-relaxed text-ink-500">{project.description}</p>
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 p-4 backdrop-blur-sm transition-all"
+      onClick={onClose}
+    >
+      <div
+        className="relative flex flex-col items-center justify-center max-h-[95vh] max-w-5xl w-full"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Top bar with counter and close button */}
+        <div className="flex w-full items-center justify-between pb-3 text-white">
+          <div className="min-w-0 flex-1 pr-4">
+            <h4 className="truncate text-base font-bold sm:text-lg">{projectTitle}</h4>
+            <p className="text-xs text-white/70">
+              Photo {currentIndex + 1} of {images.length} (Max 8)
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="flex h-9 w-9 items-center justify-center rounded-full bg-white/15 text-white hover:bg-white/30"
+            title="Close viewer"
+          >
+            ✕
+          </button>
+        </div>
+
+        {/* Main image view with previous / next arrows */}
+        <div className="relative flex items-center justify-center w-full max-h-[70vh] min-h-[280px] overflow-hidden rounded-2xl bg-black/50">
+          <img
+            src={images[currentIndex]}
+            alt={`${projectTitle} photo ${currentIndex + 1}`}
+            className="max-h-[70vh] w-auto max-w-full object-contain rounded-xl shadow-2xl"
+          />
+
+          {images.length > 1 && (
+            <>
+              <button
+                type="button"
+                onClick={handlePrev}
+                aria-label="Previous photo"
+                className="absolute left-3 top-1/2 -translate-y-1/2 flex h-11 w-11 items-center justify-center rounded-full bg-black/60 text-white shadow-lg backdrop-blur-sm transition hover:bg-black/80 hover:scale-105 active:scale-95 text-lg font-bold"
+              >
+                &#10094;
+              </button>
+              <button
+                type="button"
+                onClick={handleNext}
+                aria-label="Next photo"
+                className="absolute right-3 top-1/2 -translate-y-1/2 flex h-11 w-11 items-center justify-center rounded-full bg-black/60 text-white shadow-lg backdrop-blur-sm transition hover:bg-black/80 hover:scale-105 active:scale-95 text-lg font-bold"
+              >
+                &#10095;
+              </button>
+            </>
+          )}
+        </div>
+
+        {/* Bottom thumbnail strip */}
+        {images.length > 1 && (
+          <div className="mt-4 flex max-w-full gap-2 overflow-x-auto p-1">
+            {images.map((imgUrl, idx) => (
+              <button
+                key={idx}
+                type="button"
+                onClick={() => setCurrentIndex(idx)}
+                className={cn(
+                  "relative h-14 w-14 shrink-0 overflow-hidden rounded-lg border-2 transition",
+                  idx === currentIndex ? "border-emerald-400 scale-105 ring-2 ring-emerald-400/50" : "border-transparent opacity-60 hover:opacity-100"
+                )}
+              >
+                <img src={imgUrl} alt="" className="h-full w-full object-cover" />
+              </button>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );
 }
 
 function PortfolioSection({ contractor }) {
+  const { user } = useAuth();
+  const isOwner = Boolean(user && (user.id === contractor?.userId || user.id === contractor?.id));
   const portfolio = contractor?.portfolio || [];
-  if (portfolio.length === 0) return null;
+
+  const [lightboxOpen, setLightboxOpen] = useState(false);
+  const [activeProject, setActiveProject] = useState(null);
+  const [activeImageIndex, setActiveImageIndex] = useState(0);
+
+  function openLightbox(project, imageIndex = 0) {
+    setActiveProject(project);
+    setActiveImageIndex(imageIndex);
+    setLightboxOpen(true);
+  }
 
   return (
-    <div>
-      <h2 className="text-lg font-bold text-ink-900">Portfolio</h2>
-      <div className="mt-4 flex gap-4 overflow-x-auto pb-1">
-        {portfolio.map((project) => (
-          <PortfolioCard key={project.title} project={project} />
-        ))}
+    <div className="rounded-2xl border border-ink-900/10 bg-white p-6">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-ink-900/10 pb-4">
+        <div>
+          <h2 className="text-lg font-bold text-ink-900">Work Portfolio & Completed Projects</h2>
+          <p className="mt-0.5 text-xs text-ink-500">
+            Verified projects, construction craftsmanship, and photographic evidence of previous jobs.
+          </p>
+        </div>
+
+        {isOwner && (
+          <Button
+            as={Link}
+            to="/complete-contractor-profile"
+            variant="secondary"
+            size="sm"
+            className="flex items-center gap-1.5 shrink-0"
+          >
+            + Add / Edit Projects
+          </Button>
+        )}
       </div>
+
+      {portfolio.length === 0 ? (
+        <div className="my-6 rounded-xl border border-dashed border-ink-900/15 bg-mist-50/60 p-8 text-center">
+          <p className="text-sm font-semibold text-ink-800">No Previous Projects Uploaded</p>
+          <p className="mt-1 text-xs text-ink-500 max-w-sm mx-auto">
+            {isOwner
+              ? "You have not added any completed projects to your work portfolio yet. Add project details and up to 8 photos to showcase your craftsmanship."
+              : "This contractor has not uploaded portfolio projects yet. Reach out via chat or phone for inquiries."}
+          </p>
+          {isOwner && (
+            <Button
+              as={Link}
+              to="/complete-contractor-profile"
+              variant="primary"
+              size="sm"
+              className="mt-4"
+            >
+              + Add Portfolio Project
+            </Button>
+          )}
+        </div>
+      ) : (
+        <div className="mt-6 space-y-8">
+          {portfolio.map((project, idx) => {
+            let imgs = [];
+            if (Array.isArray(project.images)) imgs = project.images.filter(Boolean);
+            else if (project.image) imgs = [project.image];
+            imgs = imgs.slice(0, 8);
+
+            return (
+              <div
+                key={project.id || idx}
+                className="overflow-hidden rounded-2xl border border-ink-900/10 bg-mist-50/30 p-5 transition hover:border-forest-600/30 hover:bg-white hover:shadow-card"
+              >
+                <div className="flex flex-col gap-1">
+                  <span className="text-[11px] font-bold uppercase tracking-wider text-forest-700">
+                    Project Worked On #{idx + 1}
+                  </span>
+                  <h3 className="text-base font-extrabold text-ink-900 sm:text-lg">{project.title}</h3>
+                  <p className="mt-1 text-sm leading-relaxed text-ink-700 whitespace-pre-line">
+                    {project.description}
+                  </p>
+                </div>
+
+                {/* Multi-Photo Image Gallery (Up to 8 Pictures) */}
+                {imgs.length > 0 && (
+                  <div className="mt-4 border-t border-ink-900/5 pt-4">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-xs font-bold text-ink-700">
+                        Project Gallery ({imgs.length} Picture{imgs.length === 1 ? "" : "s"} • Max 8)
+                      </span>
+                      <span className="text-[11px] font-medium text-forest-700">Click photo to zoom</span>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                      {imgs.map((imgUrl, imgIdx) => (
+                        <div
+                          key={imgIdx}
+                          onClick={() => openLightbox(project, imgIdx)}
+                          className="group relative aspect-video cursor-pointer overflow-hidden rounded-xl border border-ink-900/10 bg-mist-100 shadow-xs transition hover:opacity-95"
+                        >
+                          <img
+                            src={imgUrl}
+                            alt={`${project.title} picture ${imgIdx + 1}`}
+                            loading="lazy"
+                            className="h-full w-full object-cover transition duration-300 group-hover:scale-105"
+                          />
+                          <div className="absolute inset-0 flex items-center justify-center bg-black/0 transition group-hover:bg-black/25">
+                            <span className="rounded-full bg-black/70 px-2 py-0.5 text-[10px] font-bold text-white opacity-0 transition group-hover:opacity-100">
+                              🔍 Zoom
+                            </span>
+                          </div>
+                          {imgIdx === 0 && (
+                            <span className="absolute left-1.5 top-1.5 rounded-full bg-forest-600 px-2 py-0.5 text-[10px] font-bold text-white shadow-xs">
+                              Cover
+                            </span>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Lightbox Modal */}
+      <LightboxModal
+        isOpen={lightboxOpen}
+        onClose={() => setLightboxOpen(false)}
+        images={
+          activeProject
+            ? (Array.isArray(activeProject.images) ? activeProject.images.filter(Boolean) : activeProject.image ? [activeProject.image] : []).slice(0, 8)
+            : []
+        }
+        initialIndex={activeImageIndex}
+        projectTitle={activeProject?.title || "Project Picture"}
+      />
     </div>
   );
 }
+
 
 /* ================================================================ */
 /* Performance summary (right column)                                */

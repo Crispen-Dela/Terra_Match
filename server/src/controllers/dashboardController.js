@@ -159,22 +159,23 @@ function calculateProfileCompletion(user, contractorProfile = null) {
   let score = 0;
   const totalWeight = 100;
 
-  if (user.name) score += 20;
+  if (user.name) score += 15;
   if (user.email) score += 15;
-  if (user.phone) score += 15;
-  if (user.avatarUrl) score += 15;
+  if (user.phone) score += 10;
+  if (user.avatarUrl) score += 10;
   if (user.ghanaCardVerified) score += 20;
 
   if (user.role === "CONTRACTOR" && contractorProfile) {
-    if (contractorProfile.bio) score += 5;
-    if (contractorProfile.specialties) score += 5;
-    if (contractorProfile.licenseType) score += 5;
+    if (contractorProfile.bio && contractorProfile.bio.trim().length >= 15) score += 15;
+    const portfolio = Array.isArray(contractorProfile.portfolio) ? contractorProfile.portfolio : [];
+    if (portfolio.length >= 1) score += 15;
   } else {
-    if (user.emailVerified) score += 15;
+    if (user.emailVerified) score += 30;
   }
 
   return Math.min(score, totalWeight);
 }
+
 
 export async function getDashboardData(req, res, next) {
   try {

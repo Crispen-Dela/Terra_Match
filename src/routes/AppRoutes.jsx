@@ -23,7 +23,10 @@ import Features from "../pages/Features";
 import HelpCenter from "../pages/HelpCenter";
 import Profile from "../pages/Profile";
 import PostAProject from "../pages/PostAProject";
+
 import ListYourLand from "../pages/ListYourLand";
+import CompleteContractorProfile from "../pages/CompleteContractorProfile";
+
 import AdminLogin from "../pages/admin/AdminLogin";
 import AdminDashboard from "../pages/admin/AdminDashboard";
 import PlaceholderPage from "../pages/PlaceholderPage";
@@ -46,6 +49,8 @@ export default function AppRoutes() {
       <Route path="/get-started/ghana-card" element={<GetStartedGhanaCard />} />
       <Route path="/get-started/verify" element={<GetStartedVerify />} />
       <Route path="/dashboard" element={<Dashboard />} />
+      <Route path="/complete-contractor-profile" element={<CompleteContractorProfile />} />
+      <Route path="/contractor/edit-profile" element={<CompleteContractorProfile />} />
       <Route path="/messages" element={<Messages />} />
       <Route path="/login" element={<Login />} />
       <Route path="/about" element={<About />} />
@@ -58,6 +63,7 @@ export default function AppRoutes() {
       <Route path="/profile" element={<Profile />} />
       <Route path="/post-a-project" element={<PostAProject />} />
       <Route path="/list-your-land" element={<ListYourLand />} />
+
       
       {/* Secret Administrative Routes */}
       <Route path="/admin/login" element={<AdminLogin />} />

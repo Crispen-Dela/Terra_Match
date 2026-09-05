@@ -51,13 +51,14 @@ export async function register(req, res, next) {
                   companyName: name.trim(),
                   category: "Building & Construction",
                   specialties: "Residential, Commercial",
-                  bio: `Professional contractor specialized in quality building and construction services.`,
+                  bio: "",
                   location: "Accra, Ghana",
-                  yearsExperience: 3,
+                  yearsExperience: 1,
                   avgRating: 5.0,
                 },
               }
             : undefined,
+
       },
       include: { contractorProfile: true },
     });

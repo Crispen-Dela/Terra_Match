@@ -64,17 +64,46 @@ function HammerIcon({ className }) {
 export default function ContractorDashboard({ data, onRefresh }) {
   const [showPlansModal, setShowPlansModal] = useState(false);
   const [selectedProjectForProposal, setSelectedProjectForProposal] = useState(null);
-  const { user, plan, allPlans, verification, profileCompletion, stats, bids, availableOpportunities, reviews, conversations, activity } = data;
+  const { user, plan, allPlans, verification, profileCompletion, stats, bids, availableOpportunities, reviews, conversations, activity, contractorProfile } = data;
+
+  const isProfileIncomplete = profileCompletion < 80 || (contractorProfile?.portfolio && contractorProfile.portfolio.length === 0);
 
   const quickActions = [
+    { label: "Edit Profile & Portfolio", subtitle: "Update bio & projects", icon: TrophyIcon, to: "/complete-contractor-profile" },
     { label: "Browse Projects", subtitle: "Find open tenders", icon: HammerIcon, to: "/find-contractor" },
     { label: "Messages & Inquiries", subtitle: "Chat with clients", icon: ChatIcon, to: "/messages" },
-    { label: "My Public Profile", subtitle: "View verified page", icon: TrophyIcon, to: `/find-contractor/${user.id}` },
-    { label: "AI Estimator", subtitle: plan?.isPaid ? "Unlocked" : "Upgrade to unlock", icon: SparklesIcon, onClick: () => setShowPlansModal(true), featured: true },
+    { label: "My Public Profile", subtitle: "View verified page", icon: SparklesIcon, to: `/find-contractor/${user.id}` },
   ];
 
   return (
     <div className="space-y-6 sm:space-y-8">
+      {/* Profile Incomplete Notification Banner */}
+      {isProfileIncomplete && (
+        <div className="flex flex-col gap-3 rounded-2xl border border-amber-300 bg-amber-50 p-4 sm:flex-row sm:items-center sm:justify-between sm:p-5 shadow-xs">
+          <div className="flex items-start gap-3">
+            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-amber-100 text-amber-800 font-bold">
+              !
+            </span>
+            <div>
+              <h2 className="text-sm font-bold text-amber-900">Complete Your Contractor Profile & Portfolio</h2>
+              <p className="mt-0.5 text-xs text-amber-800/90 leading-relaxed">
+                Potential clients need to review your professional bio and past work portfolio before awarding building contracts.
+              </p>
+            </div>
+          </div>
+
+          <Button
+            as={Link}
+            to="/complete-contractor-profile"
+            variant="primary"
+            size="sm"
+            className="shrink-0 self-start sm:self-auto bg-amber-800 text-white hover:bg-amber-900"
+          >
+            Complete Profile Now &rarr;
+          </Button>
+        </div>
+      )}
+
       {/* 1. Welcome & Identity Header */}
       <DashboardHeader
         user={user}
@@ -83,7 +112,9 @@ export default function ContractorDashboard({ data, onRefresh }) {
         profileCompletion={profileCompletion}
         onOpenPlans={() => setShowPlansModal(true)}
         roleLabel="Licensed Contractor"
+        editProfileTo="/complete-contractor-profile"
       />
+
 
       {/* 2. Key Performance Metrics */}
       <div className="grid grid-cols-2 gap-3.5 sm:gap-5 lg:grid-cols-4">

@@ -172,8 +172,13 @@ export default function GhanaCardVerify() {
       });
       setIsVerified(true);
       setTimeout(() => {
-        navigate(returnTo, { replace: true });
+        if (roleId === "contractor") {
+          navigate("/complete-contractor-profile", { replace: true });
+        } else {
+          navigate(returnTo, { replace: true });
+        }
       }, 1200);
+
     } catch (err) {
       setSubmitError(err.message || "Couldn't verify your Ghana Card. Please try again.");
     } finally {

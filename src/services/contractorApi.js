@@ -8,6 +8,13 @@ export const contractorApi = {
   getBySlug: (slug) => api.get(`/api/contractors/${encodeURIComponent(slug)}`),
   getMyProfile: () => api.get("/api/contractors/me"),
   updateMyProfile: (data) => api.put("/api/contractors/me", data),
+  getProfileStatus: () => api.get("/api/contractors/status"),
+  addProject: ({ title, description, images }) =>
+    api.post("/api/contractors/projects", { title, description, images }),
+  updateProject: (projectId, { title, description, images }) =>
+    api.put(`/api/contractors/projects/${projectId}`, { title, description, images }),
+  deleteProject: (projectId) =>
+    api.delete(`/api/contractors/projects/${projectId}`),
   addReview: (contractorId, { rating, comment }) =>
     api.post(`/api/contractors/${contractorId}/reviews`, { rating, comment }),
   recommend: (params) => {
@@ -21,4 +28,5 @@ export const contractorApi = {
       proposalText,
     }),
 };
+
 
