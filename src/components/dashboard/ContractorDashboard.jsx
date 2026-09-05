@@ -5,6 +5,7 @@ import DashboardStatsCard from "./DashboardStatsCard";
 import DashboardActivityFeed from "./DashboardActivityFeed";
 import DashboardQuickActions from "./DashboardQuickActions";
 import PlanUpgradeModal from "./PlanUpgradeModal";
+import SubmitProposalModal from "./SubmitProposalModal";
 import Button from "../common/Button";
 import { cn } from "../../utils/cn";
 
@@ -62,6 +63,7 @@ function HammerIcon({ className }) {
 
 export default function ContractorDashboard({ data, onRefresh }) {
   const [showPlansModal, setShowPlansModal] = useState(false);
+  const [selectedProjectForProposal, setSelectedProjectForProposal] = useState(null);
   const { user, plan, allPlans, verification, profileCompletion, stats, bids, availableOpportunities, reviews, conversations, activity } = data;
 
   const quickActions = [
@@ -217,7 +219,12 @@ export default function ContractorDashboard({ data, onRefresh }) {
 
                     <div className="mt-3.5 flex items-center justify-between border-t border-ink-900/5 pt-2.5">
                       <span className="text-[11px] text-ink-500">{p._count?.bids || 0} bids placed</span>
-                      <Button as={Link} to="/find-contractor" variant="secondary" size="xs">
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        size="xs"
+                        onClick={() => setSelectedProjectForProposal(p)}
+                      >
                         Submit Proposal
                       </Button>
                     </div>
@@ -299,6 +306,16 @@ export default function ContractorDashboard({ data, onRefresh }) {
         plans={allPlans}
         currentPlanId={plan?.id}
         onPlanUpdated={() => {
+          if (onRefresh) onRefresh();
+        }}
+      />
+
+      {/* Submit Proposal Modal */}
+      <SubmitProposalModal
+        isOpen={Boolean(selectedProjectForProposal)}
+        onClose={() => setSelectedProjectForProposal(null)}
+        project={selectedProjectForProposal}
+        onSuccess={() => {
           if (onRefresh) onRefresh();
         }}
       />

@@ -14,4 +14,11 @@ export const contractorApi = {
     const q = new URLSearchParams(params || {}).toString();
     return api.get(`/api/ai/recommend${q ? `?${q}` : ""}`);
   },
+  submitBid: (projectId, { bidAmount, estimatedDuration, proposalText }) =>
+    api.post(`/api/projects/${projectId}/bids`, {
+      bidAmount: parseFloat(bidAmount),
+      estimatedDuration,
+      proposalText,
+    }),
 };
+
