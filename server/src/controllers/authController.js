@@ -90,7 +90,10 @@ export async function login(req, res, next) {
 
     // If logging in via password
     if (password) {
-      if (!user || !user.passwordHash) {
+      if (!user) {
+        throw new AppError("Account does not exist. User not created.", 404);
+      }
+      if (!user.passwordHash) {
         throw new AppError("Invalid email or password.", 401);
       }
       const isMatch = await bcrypt.compare(password, user.passwordHash);

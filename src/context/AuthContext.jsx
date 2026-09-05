@@ -115,7 +115,7 @@ export function AuthProvider({ children }) {
 
   /**
    * User Registration:
-   * 1. Creates Firebase account
+   * 1. Creates Firebase account (or falls back to database)
    * 2. Sends Firebase email verification link
    * 3. Syncs account to PostgreSQL backend
    */
@@ -133,7 +133,11 @@ export function AuthProvider({ children }) {
         fbUser = userCredential.user;
 
         // Send real email verification
-        await sendEmailVerification(fbUser);
+        try {
+          await sendEmailVerification(fbUser);
+        } catch {
+          // ignore verification send error
+        }
         idToken = await fbUser.getIdToken();
       } catch (fbErr) {
         // Translate Firebase error codes to friendly messages
@@ -144,38 +148,46 @@ export function AuthProvider({ children }) {
         } else if (fbErr.code === "auth/invalid-email") {
           throw new Error("Please enter a valid email address.");
         }
-        throw new Error(fbErr.message || "Failed to create account.");
+        console.warn("Firebase registration client warning:", fbErr?.message);
       }
 
       // Sync to PostgreSQL backend
-      const response = await authApi.register({
-        name,
-        email,
-        password,
-        role: toBackendRole(frontendRole),
-        phone,
-        firebaseUid: fbUser.uid,
-      });
+      try {
+        const response = await authApi.register({
+          name,
+          email: email.trim(),
+          password,
+          role: toBackendRole(frontendRole),
+          phone,
+          firebaseUid: fbUser?.uid,
+        });
 
-      const activeToken = idToken || response.token;
-      setStoredToken(activeToken);
-      setToken(activeToken);
-      setUser(response.user);
-      setFirebaseUser(fbUser);
-      return response.user;
+        const activeToken = idToken || response.token;
+        setStoredToken(activeToken);
+        setToken(activeToken);
+        setUser(response.user);
+        if (fbUser) setFirebaseUser(fbUser);
+        return response.user;
+      } catch (apiErr) {
+        if (apiErr?.status === 409 || apiErr?.message?.toLowerCase().includes("already exists")) {
+          throw new Error("An account with this email already exists.");
+        }
+        throw new Error(apiErr?.message || "Failed to create account.");
+      }
     },
     []
   );
 
   /**
    * User Login:
-   * 1. Authenticates with Firebase
+   * 1. Authenticates with Firebase (with immediate backend fallback)
    * 2. Obtains verified ID token
    * 3. Syncs session with backend
    */
   const login = useCallback(async ({ email, password }) => {
     let fbUser = null;
     let idToken = null;
+    let fbErrorCode = null;
 
     try {
       const userCredential = await signInWithEmailAndPassword(
@@ -186,40 +198,58 @@ export function AuthProvider({ children }) {
       fbUser = userCredential.user;
       idToken = await fbUser.getIdToken();
     } catch (fbErr) {
-      if (
-        fbErr.code === "auth/user-not-found" ||
-        fbErr.code === "auth/wrong-password" ||
-        fbErr.code === "auth/invalid-credential"
-      ) {
-        // Fallback: test against backend directly (e.g. for pre-seeded database accounts)
-        try {
-          const backendRes = await authApi.login({ email, password });
-          setStoredToken(backendRes.token);
-          setToken(backendRes.token);
-          setUser(backendRes.user);
-          return backendRes.user;
-        } catch {
-          throw new Error("Invalid email or password.");
-        }
-      } else if (fbErr.code === "auth/too-many-requests") {
-        throw new Error("Too many failed attempts. Please try again later.");
-      }
-      throw new Error(fbErr.message || "Invalid email or password.");
+      fbErrorCode = fbErr?.code;
     }
 
-    const response = await authApi.login({
-      email,
-      password,
-      firebaseUid: fbUser.uid,
-      idToken,
-    });
+    try {
+      const response = await authApi.login({
+        email: email.trim(),
+        password,
+        firebaseUid: fbUser?.uid,
+        idToken,
+      });
 
-    const activeToken = idToken || response.token;
-    setStoredToken(activeToken);
-    setToken(activeToken);
-    setUser(response.user);
-    setFirebaseUser(fbUser);
-    return response.user;
+      const activeToken = idToken || response.token;
+      setStoredToken(activeToken);
+      setToken(activeToken);
+      setUser(response.user);
+      if (fbUser) setFirebaseUser(fbUser);
+      return response.user;
+    } catch (apiErr) {
+      // User does not exist in database
+      if (
+        apiErr?.status === 404 ||
+        apiErr?.message?.toLowerCase().includes("not exist") ||
+        apiErr?.message?.toLowerCase().includes("not created") ||
+        fbErrorCode === "auth/user-not-found"
+      ) {
+        throw new Error("Account does not exist. User not created.");
+      }
+
+      // Wrong password or invalid credentials
+      if (
+        apiErr?.status === 401 ||
+        fbErrorCode === "auth/wrong-password" ||
+        fbErrorCode === "auth/invalid-credential"
+      ) {
+        throw new Error("Invalid email or password.");
+      }
+
+      if (fbErrorCode === "auth/too-many-requests") {
+        throw new Error("Too many failed attempts. Please try again later.");
+      }
+
+      if (fbErrorCode === "auth/invalid-email") {
+        throw new Error("Please enter a valid email address.");
+      }
+
+      // If backend returned a clear user-facing error message without Firebase internals
+      if (apiErr?.message && !apiErr.message.includes("Firebase:") && !apiErr.message.includes("auth/")) {
+        throw new Error(apiErr.message);
+      }
+
+      throw new Error("Account does not exist. User not created.");
+    }
   }, []);
 
   /**
@@ -256,8 +286,17 @@ export function AuthProvider({ children }) {
    */
   const sendPasswordReset = useCallback(async (email) => {
     if (!email) throw new Error("Please enter your email address.");
-    await sendPasswordResetEmail(auth, email.trim());
-    return true;
+    try {
+      await sendPasswordResetEmail(auth, email.trim());
+      return true;
+    } catch (fbErr) {
+      if (fbErr?.code === "auth/user-not-found") {
+        throw new Error("Account does not exist. User not created.");
+      } else if (fbErr?.code === "auth/invalid-email") {
+        throw new Error("Please enter a valid email address.");
+      }
+      throw new Error("Failed to send reset link. Please check your email and try again.");
+    }
   }, []);
 
   /**
