@@ -99,7 +99,48 @@ async function runAiTests() {
       passed++;
     }
 
-    console.log("\n3b. Testing aiChatAssistant with Land Due Diligence query...");
+    console.log("\n3b. Testing aiChatAssistant with Greeting + Project Request ('Hello, I want a house')...");
+    const reqGreetingProject = {
+      body: {
+        userMessage: "Hello, I want a house",
+        history: [],
+        brief: {},
+      },
+    };
+    const resGreetingProject = createMockRes();
+    await aiChatAssistant(reqGreetingProject, resGreetingProject, () => {});
+
+    if (!resGreetingProject.data?.matches || resGreetingProject.data.matches.length === 0) {
+      console.error("❌ FAILED: 'Hello, I want a house' SHOULD return contractor recommendations.");
+      failed++;
+    } else {
+      console.log(`✅ 'Hello, I want a house' returned ${resGreetingProject.data.matches.length} contractor matches!`);
+      console.log("   Greeting + Recommendation Reply Preview:\n   " + resGreetingProject.data?.reply);
+      console.log("   Project Brief Extracted:", resGreetingProject.data?.projectBrief?.title);
+      passed++;
+    }
+
+    console.log("\n3c. Testing aiChatAssistant with direct project request ('I want a house')...");
+    const reqDirect = {
+      body: {
+        userMessage: "I want a house",
+        history: [],
+        brief: {},
+      },
+    };
+    const resDirect = createMockRes();
+    await aiChatAssistant(reqDirect, resDirect, () => {});
+
+    if (!resDirect.data?.matches || resDirect.data.matches.length === 0) {
+      console.error("❌ FAILED: 'I want a house' SHOULD return contractor recommendations.");
+      failed++;
+    } else {
+      console.log(`✅ 'I want a house' returned ${resDirect.data.matches.length} contractor matches!`);
+      console.log("   Reply Preview:\n   " + resDirect.data?.reply);
+      passed++;
+    }
+
+    console.log("\n3d. Testing aiChatAssistant with Land Due Diligence query...");
     const req = {
       body: {
         userMessage: "What documents must I check at the Lands Commission before buying land in East Legon Hills?",

@@ -329,8 +329,9 @@ PROJECT INTAKE FIELDS TO SCAN FOR:
 GUIDELINES:
 - Always be helpful, authoritative, friendly, and culturally nuanced for Ghana.
 - Format responses in clean, easy-to-read markdown with bullet points and bold highlights.
-- GREETINGS: If the user simply says "hello", "hi", or casual greetings, respond warmly, conversationally, and concisely in 1-2 sentences. Do NOT output a wall of text, do NOT set searchCriteria.contractorSpecialty, and set projectBrief to null.
-- CONTRACTOR RECOMMENDATIONS: When the user asks for contractors, builders, or recommendations, introduce the recommendations clearly (e.g., "These are some contractors who can aid you" or "Here are some recommendations"). Only set "searchCriteria.contractorSpecialty" if the user is explicitly asking to find/hire contractors or specifies a clear construction trade need.
+- GREETINGS ONLY: If the user simply says a casual greeting (e.g. "hello", "hi", "good morning", "how are you") without specifying a project or request, respond warmly, conversationally, and concisely in 1-2 sentences. Do NOT output a wall of text, do NOT set searchCriteria.contractorSpecialty, and set projectBrief to null.
+- GREETINGS WITH PROJECT / CONTRACTOR REQUEST: If the user includes a greeting alongside a project or trade request (e.g., "Hello, I want a house", "Hi, I need a builder in Accra", "Good morning, looking for contractors"), you MUST begin the response with a greeting followed immediately by the contractor recommendations (e.g. "Hello there! Here are some recommendations of contractors who can aid you with your project:" or "Hello! 👋 These are some contractors who can aid you with your project:"). In this case, DO extract the projectBrief and set searchCriteria.contractorSpecialty.
+- DIRECT CONTRACTOR / HOUSE REQUESTS: When the user asks for contractors, builders, or houses directly (e.g. "I want a house", "Find contractors"), introduce the recommendations clearly (e.g. "These are some contractors who can aid you with your project. Here are some recommendations based on verified ratings and specialties:"). Set searchCriteria.contractorSpecialty.
 - Do NOT generate HTML, SVG, or raw code unless requested.
 
 JSON INTENT & BRIEF OUTPUT:
@@ -427,9 +428,69 @@ Always include a clean JSON code block at the very end of your response formatte
     }
 
     const qTrimmed = userMessage.trim().toLowerCase();
-    const isGreeting = /^(hello|hi|hey|good morning|good afternoon|good evening|greetings|howdy|yo|sup|help)\b/i.test(qTrimmed) || qTrimmed === "hello" || qTrimmed === "hi" || qTrimmed === "hey";
-    const isGenericPleasantry = /^(good|great|thanks|thank you|ok|okay|nice|awesome|cool|alright|perfect|sounds good|noted|understood|well done|good job|fine)\b/i.test(qTrimmed) || ["good", "great", "thanks", "thank you", "ok", "okay", "nice", "awesome", "cool", "alright", "perfect", "fine", "yes", "no"].includes(qTrimmed);
-    const isGreetingOrPleasantry = isGreeting || isGenericPleasantry;
+
+    // Check if message starts with or contains a greeting
+    const startsWithGreeting = /^(hello|hi|hey|good morning|good afternoon|good evening|greetings|howdy|yo|sup|help)\b/i.test(qTrimmed);
+
+    // Strip greeting prefix from the beginning
+    const queryWithoutGreeting = qTrimmed
+      .replace(/^(hello|hi|hey|good morning|good afternoon|good evening|greetings|howdy|yo|sup|help)\b[,\s!.-]*/i, "")
+      .trim();
+
+    // Pure pleasantry check (e.g., "good", "thanks", "ok", "great", "cool", "fine")
+    const isGenericPleasantry =
+      /^(good|great|thanks|thank you|ok|okay|nice|awesome|cool|alright|perfect|sounds good|noted|understood|well done|good job|fine|yes|no)\b[!\.\s]*$/i.test(qTrimmed) ||
+      ["good", "great", "thanks", "thank you", "ok", "okay", "nice", "awesome", "cool", "alright", "perfect", "fine", "yes", "no"].includes(qTrimmed);
+
+    // Project / Contractor / House / Construction intent check
+    const hasContractorOrProjectIntent =
+      qTrimmed.includes("contractor") ||
+      qTrimmed.includes("builder") ||
+      qTrimmed.includes("build") ||
+      qTrimmed.includes("artisan") ||
+      qTrimmed.includes("hire") ||
+      qTrimmed.includes("storey") ||
+      qTrimmed.includes("house") ||
+      qTrimmed.includes("home") ||
+      qTrimmed.includes("building") ||
+      qTrimmed.includes("construction") ||
+      qTrimmed.includes("construct") ||
+      qTrimmed.includes("renovat") ||
+      qTrimmed.includes("remodel") ||
+      qTrimmed.includes("electric") ||
+      qTrimmed.includes("plumb") ||
+      qTrimmed.includes("architect") ||
+      qTrimmed.includes("engineer") ||
+      qTrimmed.includes("surveyor") ||
+      qTrimmed.includes("mason") ||
+      qTrimmed.includes("recommend") ||
+      qTrimmed.includes("aid") ||
+      qTrimmed.includes("want a house") ||
+      qTrimmed.includes("need a house");
+
+    const hasLandOrCostIntent =
+      qTrimmed.includes("check") ||
+      qTrimmed.includes("buying land") ||
+      qTrimmed.includes("indenture") ||
+      qTrimmed.includes("title") ||
+      qTrimmed.includes("due diligence") ||
+      qTrimmed.includes("flood") ||
+      qTrimmed.includes("waterlog") ||
+      qTrimmed.includes("soil") ||
+      qTrimmed.includes("terrain") ||
+      qTrimmed.includes("cost") ||
+      qTrimmed.includes("3-bedroom") ||
+      qTrimmed.includes("price") ||
+      qTrimmed.includes("budget") ||
+      qTrimmed.includes("estimate") ||
+      qTrimmed.includes("calculator");
+
+    // A message is a PURE greeting only if it starts with a greeting and has NO project/land/cost intent
+    const isPureGreeting =
+      (startsWithGreeting && !queryWithoutGreeting) ||
+      (startsWithGreeting && !hasContractorOrProjectIntent && !hasLandOrCostIntent && queryWithoutGreeting.length < 4);
+
+    const isPureGreetingOrPleasantry = isPureGreeting || isGenericPleasantry;
 
     const pickRandom = (arr) => arr[Math.floor(Math.random() * arr.length)];
 
@@ -440,7 +501,7 @@ Always include a clean JSON code block at the very end of your response formatte
       let quickReplies = ["Estimate Construction Cost", "Check Land Due Diligence", "Inspect Flood Risk", "Find Top Contractors"];
       let fallbackWidget = null;
 
-      if (isGreeting) {
+      if (isPureGreeting) {
         const greetingOptions = [
           `Hello! 👋 I am the TerraMatch AI Assistant here to help you with land acquisition, due diligence, and verified construction in Ghana.\n\nHow can I assist you today?`,
           `Hi there! 👋 Welcome to TerraMatch. I am here to help you calculate construction costs, verify land documents, or match with trusted builders across Ghana. What can I help you with today?`,
@@ -467,44 +528,42 @@ Always include a clean JSON code block at the very end of your response formatte
           "Inspect Flood Risk",
           "Find Top Contractors",
         ];
-      } else if (qLower.includes("check") || qLower.includes("buying land") || qLower.includes("indenture") || qLower.includes("title") || qLower.includes("due diligence")) {
-        fallbackReply = `### Essential Steps for Buying Land in Ghana:\n\n1. **Conduct a Search at Lands Commission**: Obtain a certified official search report covering the Public and Vested Land Management Division (PVLMD) and Land Registration Division (LRD).\n2. **Engage a Licensed Cadastral Surveyor**: Verify the site plan coordinates on-ground using GPS and check against the Lands Commission regional base map.\n3. **Inspect Stool / Family Lineage**: Confirm who holds the allodial title and whether the rightful Chief or Family Head is signing the Indenture.\n4. **Check for Planning Scheme / Zoning**: Ensure the land is zoned for your intended use (Residential/Commercial) at the local District Assembly.\n5. **Land Title Registration**: Register your Indenture to obtain a Land Title Certificate under the Land Act, 2020.`;
-        quickReplies = ["How to check flood risk?", "Average construction cost", "Find verified surveyor"];
-        fallbackWidget = "due_diligence";
-      } else if (qLower.includes("flood") || qLower.includes("waterlog") || qLower.includes("drainage") || qLower.includes("soil") || qLower.includes("terrain")) {
-        fallbackReply = `### Flood & Terrain Risk Assessment in Ghana:\n\n- **Low-Risk / Elevated Zones**: East Legon Hills, Haatso, Oyarifa, Abokobi, Ayi Mensah, McCarthy Hill, and the Aburi Ridge sit on elevated bedrock with excellent natural gravity drainage.\n- **High-Risk Low-Lying Zones**: Alajo, Odawna (Circle), Weija basin, Sakumono lagoon plains, and lower Spintex road require specialized raft/pile foundations and raised sub-base engineering.\n- **Recommended Foundation**: In waterlogged or clay soils, use a **reinforced raft foundation** with waterproof concrete admixtures and comprehensive perimeter French drains.`;
-        quickReplies = ["Check East Legon Hills", "Foundation cost estimate", "Recommend Civil Engineer"];
-        fallbackWidget = "soil_flood";
-      } else if (qLower.includes("cost") || qLower.includes("3-bedroom") || qLower.includes("price") || qLower.includes("budget") || qLower.includes("estimate") || qLower.includes("calculator")) {
-        fallbackReply = `### Estimated Construction Costs in Ghana (2025/2026 Baseline):\n\n- **Standard 3-Bedroom House (Foundation to Roofing)**: Approximately **GHS 180,000 – GHS 320,000** for structural carcass.\n- **Full High-End Finishing (POP, Porcelain Tiles, Electricals & Plumbing)**: **GHS 120,000 – GHS 250,000** additional.\n- **Building Permit Fees**: Typically **GHS 3,500 – GHS 8,000** depending on the Municipal Assembly (e.g. Ayawaso, Ga East, Kpone Katamanso).\n- **Tips to Save Cost**: Buy quality sand and quarry stones in bulk, purchase high-tensile steel from certified distributors, and hire verified contractors with fixed milestone payments.`;
-        quickReplies = ["Find Building Contractors", "Get Architectural Plan", "Post this project"];
-        fallbackWidget = "cost_estimator";
-      } else if (
-        qLower.includes("contractor") ||
-        qLower.includes("builder") ||
-        qLower.includes("artisan") ||
-        qLower.includes("hire") ||
-        qLower.includes("storey") ||
-        qLower.includes("house") ||
-        qLower.includes("building") ||
-        qLower.includes("construction") ||
-        qLower.includes("electrician") ||
-        qLower.includes("plumber") ||
-        qLower.includes("architect") ||
-        qLower.includes("engineer") ||
-        qLower.includes("surveyor") ||
-        qLower.includes("mason") ||
-        qLower.includes("recommend") ||
-        qLower.includes("aid")
-      ) {
+      } else if (hasContractorOrProjectIntent) {
         const contractorReplies = [
           `These are some contractors who can aid you with your project. Here are some recommendations based on verified ratings and specialties:`,
           `Here are some recommendations of verified contractors who can aid you with your project:`,
           `These are some top recommendations for contractors suited to aid your project requirements:`,
           `Here are some verified builders and contractors ready to assist with your construction plans:`,
         ];
-        fallbackReply = pickRandom(contractorReplies);
+        const selectedContractorReply = pickRandom(contractorReplies);
+
+        if (startsWithGreeting) {
+          const greetingPrefixes = [
+            "Hello there! ",
+            "Hello! 👋 ",
+            "Hi there! ",
+            "Hello! I am glad to help. ",
+          ];
+          fallbackReply = `${pickRandom(greetingPrefixes)}${selectedContractorReply}`;
+        } else {
+          fallbackReply = selectedContractorReply;
+        }
         quickReplies = ["Find Top Contractors", "Estimate Construction Cost", "Post this project"];
+      } else if (qLower.includes("check") || qLower.includes("buying land") || qLower.includes("indenture") || qLower.includes("title") || qLower.includes("due diligence")) {
+        const greetingPrefix = startsWithGreeting ? `${pickRandom(["Hello there! ", "Hi there! ", "Hello! "])}` : "";
+        fallbackReply = `${greetingPrefix}### Essential Steps for Buying Land in Ghana:\n\n1. **Conduct a Search at Lands Commission**: Obtain a certified official search report covering the Public and Vested Land Management Division (PVLMD) and Land Registration Division (LRD).\n2. **Engage a Licensed Cadastral Surveyor**: Verify the site plan coordinates on-ground using GPS and check against the Lands Commission regional base map.\n3. **Inspect Stool / Family Lineage**: Confirm who holds the allodial title and whether the rightful Chief or Family Head is signing the Indenture.\n4. **Check for Planning Scheme / Zoning**: Ensure the land is zoned for your intended use (Residential/Commercial) at the local District Assembly.\n5. **Land Title Registration**: Register your Indenture to obtain a Land Title Certificate under the Land Act, 2020.`;
+        quickReplies = ["How to check flood risk?", "Average construction cost", "Find verified surveyor"];
+        fallbackWidget = "due_diligence";
+      } else if (qLower.includes("flood") || qLower.includes("waterlog") || qLower.includes("drainage") || qLower.includes("soil") || qLower.includes("terrain")) {
+        const greetingPrefix = startsWithGreeting ? `${pickRandom(["Hello there! ", "Hi there! ", "Hello! "])}` : "";
+        fallbackReply = `${greetingPrefix}### Flood & Terrain Risk Assessment in Ghana:\n\n- **Low-Risk / Elevated Zones**: East Legon Hills, Haatso, Oyarifa, Abokobi, Ayi Mensah, McCarthy Hill, and the Aburi Ridge sit on elevated bedrock with excellent natural gravity drainage.\n- **High-Risk Low-Lying Zones**: Alajo, Odawna (Circle), Weija basin, Sakumono lagoon plains, and lower Spintex road require specialized raft/pile foundations and raised sub-base engineering.\n- **Recommended Foundation**: In waterlogged or clay soils, use a **reinforced raft foundation** with waterproof concrete admixtures and comprehensive perimeter French drains.`;
+        quickReplies = ["Check East Legon Hills", "Foundation cost estimate", "Recommend Civil Engineer"];
+        fallbackWidget = "soil_flood";
+      } else if (qLower.includes("cost") || qLower.includes("3-bedroom") || qLower.includes("price") || qLower.includes("budget") || qLower.includes("estimate") || qLower.includes("calculator")) {
+        const greetingPrefix = startsWithGreeting ? `${pickRandom(["Hello there! ", "Hi there! ", "Hello! "])}` : "";
+        fallbackReply = `${greetingPrefix}### Estimated Construction Costs in Ghana (2025/2026 Baseline):\n\n- **Standard 3-Bedroom House (Foundation to Roofing)**: Approximately **GHS 180,000 – GHS 320,000** for structural carcass.\n- **Full High-End Finishing (POP, Porcelain Tiles, Electricals & Plumbing)**: **GHS 120,000 – GHS 250,000** additional.\n- **Building Permit Fees**: Typically **GHS 3,500 – GHS 8,000** depending on the Municipal Assembly (e.g. Ayawaso, Ga East, Kpone Katamanso).\n- **Tips to Save Cost**: Buy quality sand and quarry stones in bulk, purchase high-tensile steel from certified distributors, and hire verified contractors with fixed milestone payments.`;
+        quickReplies = ["Find Building Contractors", "Get Architectural Plan", "Post this project"];
+        fallbackWidget = "cost_estimator";
       } else {
         const defaultReplies = [
           `Here are some recommendations and guidance for your project. What specific question or project do you have in mind?`,
@@ -520,12 +579,14 @@ Always include a clean JSON code block at the very end of your response formatte
         ];
       }
 
-      const generatedBrief = isGreetingOrPleasantry
+      const effectiveCategory = effectiveBrief.category || inferredCategory || (hasContractorOrProjectIntent ? "Building & Construction" : null);
+
+      const generatedBrief = isPureGreetingOrPleasantry
         ? null
         : {
-            title: effectiveBrief.title || (inferredCategory ? `${inferredCategory} Project in Ghana` : null),
-            category: effectiveBrief.category || inferredCategory || null,
-            description: effectiveBrief.description || (userMessage.length > 20 ? userMessage : null),
+            title: effectiveBrief.title || (effectiveCategory ? `${effectiveCategory} Project in Ghana` : "Building & Construction Project in Ghana"),
+            category: effectiveCategory || "Building & Construction",
+            description: effectiveBrief.description || (userMessage.length > 10 ? userMessage : null),
             location: effectiveBrief.location || (qLower.includes("accra") ? "Accra, Greater Accra" : qLower.includes("kumasi") ? "Kumasi, Ashanti" : null),
             budgetRange: effectiveBrief.budgetRange || null,
             timeline: effectiveBrief.timeline || null,
@@ -536,7 +597,7 @@ Always include a clean JSON code block at the very end of your response formatte
           projectBrief: generatedBrief,
           interactiveWidget: fallbackWidget,
           readyToPost: !!(generatedBrief && generatedBrief.title && generatedBrief.category),
-          searchCriteria: { contractorSpecialty: generatedBrief?.category || null },
+          searchCriteria: { contractorSpecialty: generatedBrief?.category || (hasContractorOrProjectIntent ? "Building & Construction" : null) },
           quickReplies,
         },
         null,
@@ -564,19 +625,25 @@ Always include a clean JSON code block at the very end of your response formatte
       if (!replyMarkdown) replyMarkdown = responseText;
     }
 
-    let dbBrief = isGreetingOrPleasantry ? {} : { ...effectiveBrief };
-    if (parsedJson?.projectBrief && !isGreetingOrPleasantry) {
+    let dbBrief = isPureGreetingOrPleasantry ? {} : { ...effectiveBrief };
+    if (parsedJson?.projectBrief && !isPureGreetingOrPleasantry) {
       Object.entries(parsedJson.projectBrief).forEach(([k, v]) => {
         if (v) dbBrief[k] = v;
       });
     }
-    if (parsedJson?.searchCriteria?.contractorSpecialty && !isGreetingOrPleasantry) {
+    if (parsedJson?.searchCriteria?.contractorSpecialty && !isPureGreetingOrPleasantry) {
       dbBrief.category = parsedJson.searchCriteria.contractorSpecialty;
     }
 
+    // Ensure brief category exists if contractor/house intent detected
+    if (!dbBrief.category && hasContractorOrProjectIntent && !isPureGreetingOrPleasantry) {
+      dbBrief.category = inferredCategory || "Building & Construction";
+      dbBrief.title = dbBrief.title || `${dbBrief.category} Project in Ghana`;
+    }
+
     // Heuristic widget detection if not specified in JSON and not a greeting
-    let activeWidget = isGreetingOrPleasantry ? null : (parsedJson?.interactiveWidget || null);
-    if (!activeWidget && !isGreetingOrPleasantry) {
+    let activeWidget = isPureGreetingOrPleasantry ? null : (parsedJson?.interactiveWidget || null);
+    if (!activeWidget && !isPureGreetingOrPleasantry) {
       const userText = userMessage.toLowerCase();
       if (userText.includes("cost") || userText.includes("estimate") || userText.includes("calculator") || userText.includes("budget") || userText.includes("bedroom")) {
         activeWidget = "cost_estimator";
@@ -589,27 +656,15 @@ Always include a clean JSON code block at the very end of your response formatte
 
     // Evaluate contractors ONLY when user explicitly inquires about contractors/services or has a project brief
     let returnedMatches = [];
-    const userText = userMessage.toLowerCase();
     const isAskingForContractors =
-      userText.includes("contractor") ||
-      userText.includes("builder") ||
-      userText.includes("build") ||
-      userText.includes("artisan") ||
-      userText.includes("hire") ||
-      userText.includes("storey") ||
-      userText.includes("house") ||
-      userText.includes("electrician") ||
-      userText.includes("plumber") ||
-      userText.includes("architect") ||
-      userText.includes("engineer") ||
-      userText.includes("surveyor") ||
-      userText.includes("mason") ||
-      userText.includes("recommend") ||
-      userText.includes("aid") ||
-      (parsedJson?.searchCriteria?.contractorSpecialty && !isGreetingOrPleasantry) ||
-      (dbBrief.category && dbBrief.title);
+      !isPureGreetingOrPleasantry &&
+      (
+        hasContractorOrProjectIntent ||
+        (parsedJson?.searchCriteria?.contractorSpecialty) ||
+        (dbBrief.category && dbBrief.title)
+      );
 
-    if (isAskingForContractors && !isGreetingOrPleasantry) {
+    if (isAskingForContractors) {
       const formatted = await getContractorsFromDbOrFallback();
       returnedMatches = formatted
         .map((contractor) => {

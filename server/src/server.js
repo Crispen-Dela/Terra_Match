@@ -19,6 +19,8 @@ import uploadRoutes from "./routes/uploadRoutes.js";
 import dashboardRoutes from "./routes/dashboardRoutes.js";
 import notificationRoutes from "./routes/notificationRoutes.js";
 import { errorHandler } from "./middlewares/errorHandler.js";
+import prisma from "./config/prisma.js";
+import { seedDatabase } from "../prisma/seed.js";
 
 dotenv.config();
 
@@ -95,9 +97,6 @@ app.use("/api/notifications", notificationRoutes);
 app.use(errorHandler);
 
 // Auto-seed database if empty
-import prisma from "./config/prisma.js";
-import { seedDatabase } from "../prisma/seed.js";
-
 async function checkAndSeedDatabase() {
   try {
     const adminCount = await prisma.user.count({ where: { role: "ADMIN" } });

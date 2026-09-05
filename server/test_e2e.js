@@ -1,3 +1,5 @@
+import prisma from "./src/config/prisma.js";
+
 const API_URL = "http://localhost:8082";
 
 async function runE2ETests() {
@@ -35,7 +37,14 @@ async function runE2ETests() {
   const landsRes = await fetch(`${API_URL}/api/lands`);
   const lands = await landsRes.json();
   console.log("✓ Land Listings Query: PASSED (Count:", lands.length, ")");
-  const sampleLand = lands[0];
+  const sampleLand = lands.find((l) => !l.auctionEndsAt || new Date(l.auctionEndsAt) > new Date()) || lands[0];
+  if (sampleLand && sampleLand.auctionEndsAt && new Date(sampleLand.auctionEndsAt) <= new Date()) {
+    // Extend auction for test
+    await prisma.landListing.update({
+      where: { id: sampleLand.id },
+      data: { auctionEndsAt: new Date(Date.now() + 86400000 * 30) },
+    });
+  }
 
   // 5. Contractors Directory
   const contractorsRes = await fetch(`${API_URL}/api/contractors`);
