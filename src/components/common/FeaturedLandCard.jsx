@@ -93,30 +93,38 @@ export default function FeaturedLandCard(props) {
             {sold ? "Sold" : expired ? "Expired" : `${bids} Bids`}
           </span>
           <div className="flex shrink-0 gap-1.5">
-            {!sold && !expired && land.buyNowPrice && !isOwner && (
-              <Button
-                type="button"
-                variant="primary"
-                size="sm"
-                className="px-3 py-1.5 text-xs"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setBuyNowOpen(true);
-                }}
-              >
-                Buy Now
-              </Button>
+            {sold ? (
+              <span className="rounded-lg bg-slate-900 px-3 py-1.5 text-xs font-black uppercase tracking-wider text-white">
+                SOLD
+              </span>
+            ) : (
+              <>
+                {!expired && land.buyNowPrice && !isOwner && (
+                  <Button
+                    type="button"
+                    variant="primary"
+                    size="sm"
+                    className="px-3 py-1.5 text-xs"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setBuyNowOpen(true);
+                    }}
+                  >
+                    Buy Now
+                  </Button>
+                )}
+                <Button
+                  as={Link}
+                  to={slug ? `/explore-land/${slug}` : "/explore-land"}
+                  variant="outline-dark"
+                  size="sm"
+                  className="px-3 py-1.5 text-xs"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  View Details
+                </Button>
+              </>
             )}
-            <Button
-              as={Link}
-              to={slug ? `/explore-land/${slug}` : "/explore-land"}
-              variant="outline-dark"
-              size="sm"
-              className="px-3 py-1.5 text-xs"
-              onClick={(e) => e.stopPropagation()}
-            >
-              View Details
-            </Button>
           </div>
         </div>
       </div>

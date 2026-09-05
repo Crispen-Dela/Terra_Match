@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, Link } from "react-router-dom";
 import Button from "../common/Button";
 import Dropdown from "../common/Dropdown";
 import FormField from "../common/FormField";
@@ -296,10 +296,10 @@ export default function ListLandForm() {
             {formData.buyNowPrice ? " or buy it instantly" : ""}.
           </p>
           <div className="mt-6 flex flex-col gap-3 sm:flex-row">
-            <Button as="a" href={`/explore-land/${publishedSlug}`} variant="primary" size="md">
+            <Button as={Link} to={`/explore-land/${publishedSlug}`} variant="primary" size="md">
               View Listing
             </Button>
-            <Button as="a" href="/dashboard" variant="outline-dark" size="md">
+            <Button as={Link} to="/dashboard" variant="outline-dark" size="md">
               Back to Dashboard
             </Button>
           </div>

@@ -348,9 +348,9 @@ export default function SignupWelcome() {
 
           <p style={{ textAlign: "center", color: "#9ca3af", fontSize: "0.75rem", marginTop: 24, lineHeight: 1.5 }}>
             By continuing, you agree to TerraMatch's{" "}
-            <a href="#" style={{ color: "#1B4D3E", textDecoration: "none" }}>Terms of Service</a>
+            <Link to="/privacy-policy" style={{ color: "#1B4D3E", textDecoration: "none" }}>Terms of Service</Link>
             {" "}and{" "}
-            <a href="#" style={{ color: "#1B4D3E", textDecoration: "none" }}>Privacy Policy</a>.
+            <Link to="/privacy-policy" style={{ color: "#1B4D3E", textDecoration: "none" }}>Privacy Policy</Link>.
           </p>
         </div>
       </div>

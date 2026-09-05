@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../../context/AuthContext';
+import { api } from '../../services/api';
 import { cn } from '../../utils/cn';
 
 export default function NotificationPopover() {
@@ -25,17 +26,8 @@ export default function NotificationPopover() {
     
     setLoading(true);
     try {
-      const baseUrl = import.meta.env.VITE_API_URL || 'http://localhost:8082';
-      const response = await fetch(`${baseUrl}/api/notifications/${user.id}`, {
-        // Passing user id in params as per our route. If we added full JWT auth, we'd add Headers here.
-        headers: {
-          'Content-Type': 'application/json',
-          // 'Authorization': `Bearer ${token}` 
-        }
-      });
-      if (!response.ok) throw new Error('Failed to fetch notifications');
-      const data = await response.json();
-      setNotifications(data);
+      const data = await api.get(`/api/notifications/${user.id}`);
+      setNotifications(Array.isArray(data) ? data : []);
     } catch (error) {
       console.error('Error fetching notifications:', error);
     } finally {
@@ -51,18 +43,9 @@ export default function NotificationPopover() {
 
   const handleMarkAsRead = async (notificationId) => {
     try {
-      const baseUrl = import.meta.env.VITE_API_URL || 'http://localhost:8082';
-      const response = await fetch(`${baseUrl}/api/notifications/${notificationId}/read`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-        }
-      });
-      
-      if (!response.ok) throw new Error('Failed to mark as read');
-      
-      setNotifications(prev =>
-        prev.map(notif =>
+      await api.put(`/api/notifications/${notificationId}/read`);
+      setNotifications((prev) =>
+        prev.map((notif) =>
           notif.id === notificationId ? { ...notif, isRead: true } : notif
         )
       );

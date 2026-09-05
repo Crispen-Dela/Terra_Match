@@ -1,6 +1,8 @@
+import crypto from "crypto";
 import prisma from "../config/prisma.js";
 import { AppError } from "../middlewares/errorHandler.js";
 import { bidEvents } from "../config/events.js";
+import { streamServerClient, upsertStreamUser } from "../config/stream.js";
 
 /**
  * 1. Place a new bid on a land listing
@@ -382,6 +384,83 @@ export async function getBidDetail(req, res, next) {
   }
 }
 
+async function sendDirectMessageHelper({ senderUser, recipientUser, land, text }) {
+  if (!senderUser || !recipientUser || !text) return;
+
+  // 1. Send via Stream Chat Channel & Message
+  if (streamServerClient) {
+    try {
+      await upsertStreamUser(senderUser);
+      await upsertStreamUser(recipientUser);
+
+      const members = [senderUser.id, recipientUser.id].sort();
+      const rawKey = `direct_${members.join("_")}`;
+      const hash = crypto.createHash("md5").update(rawKey).digest("hex");
+      const channelId = `tm_${hash}`;
+
+      const channelData = {
+        members,
+        created_by_id: senderUser.id,
+        name: land ? `Inquiry: ${land.title}` : `${senderUser.name} & ${recipientUser.name}`,
+        landId: land?.id,
+        landTitle: land?.title,
+        landSlug: land?.slug,
+        landPrice: land?.buyNowPrice || land?.totalPrice,
+        landLocation: land?.address,
+      };
+
+      const channel = streamServerClient.channel("messaging", channelId, channelData);
+      await channel.create();
+      await channel.sendMessage({
+        text: text.trim(),
+        user_id: senderUser.id,
+      });
+    } catch (err) {
+      console.warn("Stream Chat DM error:", err.message);
+    }
+  }
+
+  // 2. Persist in PostgreSQL via Prisma Conversation & Message
+  try {
+    let conv = await prisma.conversation.findFirst({
+      where: {
+        OR: [
+          { buyerId: recipientUser.id, sellerId: senderUser.id },
+          { buyerId: senderUser.id, sellerId: recipientUser.id },
+        ],
+      },
+    });
+
+    if (!conv) {
+      conv = await prisma.conversation.create({
+        data: {
+          buyerId: recipientUser.id,
+          sellerId: senderUser.id,
+          landId: land?.id || null,
+        },
+      });
+    } else {
+      await prisma.conversation.update({
+        where: { id: conv.id },
+        data: {
+          lastMessageAt: new Date(),
+          ...(land?.id ? { landId: land.id } : {}),
+        },
+      });
+    }
+
+    await prisma.message.create({
+      data: {
+        conversationId: conv.id,
+        senderId: senderUser.id,
+        body: text.trim(),
+      },
+    });
+  } catch (err) {
+    console.warn("Prisma conversation error:", err.message);
+  }
+}
+
 /**
  * 6. Update bid status (ACCEPTED | REJECTED | WITHDRAWN)
  */
@@ -398,13 +477,22 @@ export async function updateBidStatus(req, res, next) {
     const bid = await prisma.landBid.findUnique({
       where: { id },
       include: {
-        land: true,
+        land: {
+          include: {
+            owner: true,
+          },
+        },
         bidder: true,
       },
     });
 
     if (!bid) {
       throw new AppError("Bid not found.", 404);
+    }
+
+    // Check actionable status: prevent repeated accept/reject or contradictory actions
+    if (bid.status === "ACCEPTED" || bid.status === "REJECTED" || bid.status === "WITHDRAWN") {
+      throw new AppError(`This bid has already been ${bid.status.toLowerCase()} and cannot be modified.`, 400);
     }
 
     // Authorization checks
@@ -468,6 +556,23 @@ export async function updateBidStatus(req, res, next) {
 
       return uBid;
     });
+
+    // Send a DM to the PARTICULAR bidder who made that bid using TerraMatch's chat infrastructure
+    let dmText = "";
+    if (status === "ACCEPTED") {
+      dmText = `Bid of GHS ${bid.amount.toLocaleString()} has been accepted.`;
+    } else if (status === "REJECTED") {
+      dmText = `Bid of GHS ${bid.amount.toLocaleString()} has been rejected.`;
+    }
+
+    if (dmText && bid.bidder) {
+      await sendDirectMessageHelper({
+        senderUser: req.user,
+        recipientUser: bid.bidder,
+        land: bid.land,
+        text: dmText,
+      });
+    }
 
     const formattedBid = {
       id: updatedBid.id,

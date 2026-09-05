@@ -85,30 +85,38 @@ export default function LandListingTile(props) {
           {sold ? "Auction closed" : expired ? "Auction expired" : `${bids} Bids`}
         </p>
 
-        {!sold && !expired && land.buyNowPrice && !isOwner && (
-          <Button
-            type="button"
-            variant="primary"
-            size="sm"
-            className="mt-2.5 w-full px-3 py-1.5 text-xs"
-            onClick={(e) => {
-              e.stopPropagation();
-              setBuyNowOpen(true);
-            }}
-          >
-            Buy Now
-          </Button>
+        {sold ? (
+          <div className="mt-2.5 w-full rounded-lg bg-slate-900 py-1.5 text-center text-xs font-black uppercase tracking-wider text-white">
+            SOLD
+          </div>
+        ) : (
+          <>
+            {!expired && land.buyNowPrice && !isOwner && (
+              <Button
+                type="button"
+                variant="primary"
+                size="sm"
+                className="mt-2.5 w-full px-3 py-1.5 text-xs"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setBuyNowOpen(true);
+                }}
+              >
+                Buy Now
+              </Button>
+            )}
+            <Button
+              as={Link}
+              to={slug ? `/explore-land/${slug}` : "/explore-land"}
+              variant="outline-dark"
+              size="sm"
+              className="mt-1.5 w-full px-3 py-1.5 text-xs"
+              onClick={(e) => e.stopPropagation()}
+            >
+              View Details
+            </Button>
+          </>
         )}
-        <Button
-          as={Link}
-          to={slug ? `/explore-land/${slug}` : "/explore-land"}
-          variant="outline-dark"
-          size="sm"
-          className="mt-1.5 w-full px-3 py-1.5 text-xs"
-          onClick={(e) => e.stopPropagation()}
-        >
-          View Details
-        </Button>
       </div>
 
       {land.buyNowPrice && !sold && !expired && !isOwner && (
