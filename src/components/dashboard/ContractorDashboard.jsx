@@ -284,14 +284,14 @@ export default function ContractorDashboard({ data, onRefresh }) {
                 </p>
               </div>
 
-              <Button
+              <button
                 type="button"
-                variant="primary"
                 onClick={() => setShowPlansModal(true)}
-                className="shrink-0 bg-white text-forest-900 hover:bg-forest-50 shadow-sm"
+                className="shrink-0 inline-flex items-center justify-center gap-1.5 rounded-xl border-2 border-black bg-white px-5 py-2.5 text-sm font-extrabold text-[#063929] shadow-sm transition-all duration-200 hover:bg-forest-50 hover:text-[#022318] active:scale-[0.98]"
               >
-                {plan?.isPaid ? "Access AI Suite" : "Upgrade to Pro"}
-              </Button>
+                <SparklesIcon className="h-4 w-4 text-amber-500" />
+                <span>{plan?.isPaid ? "Access AI Suite" : "Upgrade to Pro"}</span>
+              </button>
             </div>
           </div>
         </div>
