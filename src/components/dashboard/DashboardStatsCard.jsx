@@ -20,14 +20,14 @@ export default function DashboardStatsCard({
       )}
     >
       <div className="flex items-start justify-between gap-2">
-        <div className="flex items-center gap-3 min-w-0">
+        <div className="flex items-center gap-2.5 sm:gap-3 min-w-0 flex-1">
           {Icon && (
-            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-emerald-50 text-[#059669] transition group-hover:bg-emerald-100">
-              <Icon className="h-5.5 w-5.5" />
+            <div className="flex h-10 w-10 sm:h-11 sm:w-11 shrink-0 items-center justify-center rounded-xl bg-emerald-50 text-[#059669] transition group-hover:bg-emerald-100">
+              <Icon className="h-5 w-5 sm:h-5.5 sm:w-5.5" />
             </div>
           )}
-          <div className="min-w-0">
-            <span className="block truncate text-[11px] font-extrabold uppercase tracking-wider text-slate-500">
+          <div className="min-w-0 flex-1">
+            <span className="block text-[11px] sm:text-xs font-black uppercase tracking-wider text-slate-500 leading-snug break-words">
               {title}
             </span>
           </div>
@@ -36,7 +36,7 @@ export default function DashboardStatsCard({
         {badgeText && (
           <span
             className={cn(
-              "shrink-0 whitespace-nowrap rounded-full px-3 py-1 text-[11px] font-bold leading-normal",
+              "shrink-0 whitespace-nowrap rounded-full px-2.5 py-0.5 sm:px-3 sm:py-1 text-[10px] sm:text-[11px] font-bold leading-normal",
               badgeVariant === "forest" && "bg-emerald-100 text-emerald-800",
               badgeVariant === "amber" && "bg-amber-100 text-amber-800",
               badgeVariant === "ink" && "bg-slate-100 text-slate-700"

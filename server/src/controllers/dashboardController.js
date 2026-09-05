@@ -435,7 +435,9 @@ export async function getDashboardData(req, res, next) {
 
       // Stats
       const activeListings = lands.filter((l) => l.status === "ACTIVE");
-      const soldListings = lands.filter((l) => l.status === "SOLD");
+      const currentSoldListings = lands.filter((l) => l.status === "SOLD");
+      const historicalSales = user.historicalSalesCount || 0;
+      const totalLandsSold = currentSoldListings.length + historicalSales;
       const totalPortfolioValue = lands.reduce((acc, l) => acc + (l.totalPrice || 0), 0);
 
       // Conversations / Inquiries
@@ -496,7 +498,8 @@ export async function getDashboardData(req, res, next) {
         stats: {
           totalListings: lands.length,
           activeListings: activeListings.length,
-          soldListings: soldListings.length,
+          soldListings: totalLandsSold,
+          landsSold: totalLandsSold,
           bidsReceived: allBidsReceived.length,
           portfolioValue: totalPortfolioValue,
           rating: avgRating,
@@ -505,7 +508,7 @@ export async function getDashboardData(req, res, next) {
         listings: {
           all: lands,
           active: activeListings,
-          sold: soldListings,
+          sold: currentSoldListings,
         },
         bidsReceived: {
           all: allBidsReceived,

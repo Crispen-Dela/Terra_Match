@@ -270,7 +270,9 @@ export async function getLandOwnerProfile(req, res, next) {
       : "Jan 2022";
 
     const totalListings = user.landListings ? user.landListings.length : 0;
-    const soldListings = user.landListings ? user.landListings.filter((l) => l.status === "SOLD").length : 0;
+    const currentSold = user.landListings ? user.landListings.filter((l) => l.status === "SOLD").length : 0;
+    const historicalSold = user.historicalSalesCount || 0;
+    const totalSold = currentSold + historicalSold;
 
     // Distinct areas of operation from their lands
     const regions = [
@@ -345,8 +347,9 @@ export async function getLandOwnerProfile(req, res, next) {
       email: user.email,
       avatarUrl: user.avatarUrl || null,
       memberSince: memberSinceDate,
-      totalListings: totalListings || 1,
-      successfulSales: soldListings || Math.max(1, Math.round((totalListings || 1) * 0.75)),
+      totalListings: totalListings,
+      successfulSales: totalSold,
+      landsSold: totalSold,
       responseRate: "98%",
       avgResponseTime: "1.2 hrs",
       breadcrumb: [
@@ -354,8 +357,8 @@ export async function getLandOwnerProfile(req, res, next) {
       ],
       stats: [
         { icon: "listings", label: "Member Since", value: memberSinceDate },
-        { icon: "listings", label: "Total Listings", value: String(totalListings || 1) },
-        { icon: "sales", label: "Successful Sales", value: String(soldListings || Math.max(1, Math.round((totalListings || 1) * 0.75))) },
+        { icon: "listings", label: "Total Listings", value: String(totalListings) },
+        { icon: "sales", label: "Lands Sold", value: String(totalSold) },
         { icon: "phone", label: "Response Rate", value: "98%" },
         { icon: "clock", label: "Avg. Response Time", value: "1.2 hrs" },
       ],
@@ -381,8 +384,8 @@ export async function getLandOwnerProfile(req, res, next) {
       performance: [
         { label: "Response Rate", value: "98%" },
         { label: "Avg. Response Time", value: "1.2 hrs" },
-        { label: "Successful Sales", value: String(soldListings || Math.max(1, Math.round((totalListings || 1) * 0.75))) },
-        { label: "Total Listings", value: String(totalListings || 1) },
+        { label: "Lands Sold", value: String(totalSold) },
+        { label: "Total Listings", value: String(totalListings) },
         { label: "Member Since", value: memberSinceDate },
       ],
       performanceDetails: [
@@ -554,6 +557,14 @@ export async function deleteLand(req, res, next) {
 
     if (land.ownerId !== req.user.id && req.user.role !== "ADMIN") {
       throw new AppError("Only the verified owner of this listing can delete it.", 403);
+    }
+
+    // If listing was SOLD, preserve the historical sales count for the owner
+    if (land.status === "SOLD") {
+      await prisma.user.update({
+        where: { id: land.ownerId },
+        data: { historicalSalesCount: { increment: 1 } },
+      });
     }
 
     // Permanently remove listing from PostgreSQL

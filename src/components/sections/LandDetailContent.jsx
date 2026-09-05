@@ -188,6 +188,14 @@ const AMENITY_ICONS = {
 /* Countdown hook                                                    */
 /* ================================================================ */
 
+function Trash2Icon({ className }) {
+  return (
+    <svg viewBox="0 0 24 24" className={cn("fill-none stroke-current", className)} aria-hidden="true">
+      <path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2M10 11v6M14 11v6" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
 function pad(n) {
   return String(n).padStart(2, "0");
 }
@@ -851,8 +859,9 @@ function BidPanel({
                 size="md"
                 disabled={ownerLoading}
                 onClick={onDeleteListing}
-                className="bg-rose-50 hover:bg-rose-100 text-rose-700 border-rose-200 text-xs font-bold"
+                className="bg-red-50 hover:bg-red-100 text-red-700 border border-red-300 font-extrabold text-xs shadow-2xs hover:text-red-800"
               >
+                <Trash2Icon className="h-4 w-4 mr-1 text-red-600 inline" />
                 {ownerLoading ? "..." : "Delete Listing"}
               </Button>
             </div>
@@ -868,8 +877,9 @@ function BidPanel({
                 size="md"
                 disabled={ownerLoading}
                 onClick={onDeleteListing}
-                className="w-full bg-rose-50 hover:bg-rose-100 text-rose-700 border-rose-200 text-xs font-bold"
+                className="w-full bg-red-50 hover:bg-red-100 text-red-700 border border-red-300 font-extrabold text-xs py-2 shadow-2xs hover:text-red-800"
               >
+                <Trash2Icon className="h-4 w-4 mr-1 text-red-600 inline" />
                 {ownerLoading ? "Deleting..." : "Delete Listing"}
               </Button>
             </div>

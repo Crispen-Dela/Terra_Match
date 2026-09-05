@@ -47,7 +47,11 @@ export default function LandOwnerDashboard({ data, onRefresh }) {
     activity = [],
   } = data || {};
 
-  const activeParcelsCount = stats?.activeListings !== undefined ? stats.activeListings : (listings.all ? listings.all.filter(l => l.status === "ACTIVE").length : 0);
+  const landsSoldCount = stats?.landsSold !== undefined 
+    ? stats.landsSold 
+    : (stats?.soldListings !== undefined 
+      ? stats.soldListings 
+      : (listings.all ? listings.all.filter(l => l.status === "SOLD").length : 0));
   const bidsReceivedCount = stats?.bidsReceived !== undefined ? stats.bidsReceived : (bidsReceived.all ? bidsReceived.all.length : 0);
   const portfolioValueDisplay = stats?.portfolioValue
     ? `GHS ${stats.portfolioValue.toLocaleString()}`
@@ -188,11 +192,11 @@ export default function LandOwnerDashboard({ data, onRefresh }) {
       {/* 2. Key Metrics Cards Row */}
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
         <DashboardStatsCard
-          title="ACTIVE PARCELS"
-          value={activeParcelsCount}
-          subtitle="Listed on marketplace"
+          title="LANDS SOLD"
+          value={landsSoldCount}
+          subtitle="Lands sold on marketplace"
           icon={MapPin}
-          badgeText="Published"
+          badgeText="Verified"
           badgeVariant="forest"
           to="/explore-land"
         />
@@ -405,7 +409,7 @@ export default function LandOwnerDashboard({ data, onRefresh }) {
                               size="xs"
                               disabled={landActionLoadingId === l.id}
                               onClick={() => handleMarkAsSold(l.id, l.title)}
-                              className="flex-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border-emerald-300/60 text-[11px] font-bold py-1.5"
+                              className="flex-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 font-extrabold text-[11px] py-1.5 shadow-2xs"
                             >
                               {landActionLoadingId === l.id ? "Updating..." : "Mark as Sold"}
                             </Button>
@@ -415,8 +419,9 @@ export default function LandOwnerDashboard({ data, onRefresh }) {
                               size="xs"
                               disabled={landActionLoadingId === l.id}
                               onClick={() => handleDeleteListing(l.id, l.title)}
-                              className="bg-rose-50 hover:bg-rose-100 text-rose-700 border-rose-200 text-[11px] font-bold py-1.5 px-2.5"
+                              className="bg-red-50 hover:bg-red-100 text-red-700 border border-red-300 font-extrabold text-[11px] py-1.5 px-3 transition-colors shadow-2xs hover:text-red-800"
                             >
+                              <Trash2 className="h-3.5 w-3.5 mr-1 text-red-600 inline" />
                               {landActionLoadingId === l.id ? "..." : "Delete Listing"}
                             </Button>
                           </>
@@ -431,8 +436,9 @@ export default function LandOwnerDashboard({ data, onRefresh }) {
                               size="xs"
                               disabled={landActionLoadingId === l.id}
                               onClick={() => handleDeleteListing(l.id, l.title)}
-                              className="bg-rose-50 hover:bg-rose-100 text-rose-700 border-rose-200 text-[11px] font-bold py-1.5 px-2.5"
+                              className="bg-red-50 hover:bg-red-100 text-red-700 border border-red-300 font-extrabold text-[11px] py-1.5 px-3 transition-colors shadow-2xs hover:text-red-800"
                             >
+                              <Trash2 className="h-3.5 w-3.5 mr-1 text-red-600 inline" />
                               {landActionLoadingId === l.id ? "..." : "Delete Listing"}
                             </Button>
                           </>
@@ -443,8 +449,9 @@ export default function LandOwnerDashboard({ data, onRefresh }) {
                             size="xs"
                             disabled={landActionLoadingId === l.id}
                             onClick={() => handleDeleteListing(l.id, l.title)}
-                            className="w-full bg-rose-50 hover:bg-rose-100 text-rose-700 border-rose-200 text-[11px] font-bold py-1.5"
+                            className="w-full bg-red-50 hover:bg-red-100 text-red-700 border border-red-300 font-extrabold text-[11px] py-1.5 shadow-2xs hover:text-red-800"
                           >
+                            <Trash2 className="h-3.5 w-3.5 mr-1 text-red-600 inline" />
                             {landActionLoadingId === l.id ? "..." : "Delete Listing"}
                           </Button>
                         )}
