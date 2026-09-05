@@ -10,6 +10,8 @@ export const landApi = {
   getOwnerProfile: (identifier) => api.get(`/api/lands/owner/${encodeURIComponent(identifier)}`),
   addOwnerReview: (identifier, { rating, comment }) =>
     api.post(`/api/lands/owner/${encodeURIComponent(identifier)}/reviews`, { rating, comment }),
+  markSold: (id) => api.patch(`/api/lands/${encodeURIComponent(id)}/sold`),
+  delete: (id) => api.delete(`/api/lands/${encodeURIComponent(id)}`),
   analyzeEnvironment: (lat, lng, region) => {
     const q = new URLSearchParams({ lat, lng, region }).toString();
     return api.get(`/api/ai/land-analysis?${q}`);

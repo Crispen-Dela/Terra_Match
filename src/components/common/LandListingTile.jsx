@@ -32,8 +32,8 @@ export default function LandListingTile(props) {
     )
   );
   
-  const sold = slug && isSold ? isSold(slug) : false;
-  const expired = slug && isExpired ? (!sold && isExpired(slug)) : false;
+  const sold = land.status === "SOLD" || (slug && isSold ? isSold(slug) : false);
+  const expired = land.status === "EXPIRED" || (slug && isExpired ? (!sold && isExpired(slug)) : false);
 
   return (
     <div className="w-56 shrink-0 overflow-hidden rounded-xl border border-ink-900/10 bg-white shadow-card">

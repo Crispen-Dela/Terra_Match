@@ -173,6 +173,33 @@ export function AuctionProvider({ children }) {
             });
             return next;
           });
+        } else if (event.type === "LAND_STATUS_CHANGED") {
+          const { landId, landSlug, status } = event;
+          const targetKeys = [landId, landSlug].filter(Boolean);
+
+          setRecords((prev) => {
+            const next = { ...prev };
+            targetKeys.forEach((key) => {
+              const cur = next[key] || buildFallbackRecord(key);
+              next[key] = {
+                ...cur,
+                status: status === "SOLD" ? "sold" : cur.status,
+                backendStatus: status,
+              };
+            });
+            return next;
+          });
+        } else if (event.type === "LAND_DELETED") {
+          const { landId, landSlug } = event;
+          const targetKeys = [landId, landSlug].filter(Boolean);
+
+          setRecords((prev) => {
+            const next = { ...prev };
+            targetKeys.forEach((key) => {
+              delete next[key];
+            });
+            return next;
+          });
         }
       },
     });

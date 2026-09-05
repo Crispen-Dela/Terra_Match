@@ -7,6 +7,7 @@ import PlanUpgradeModal from "./PlanUpgradeModal";
 import Button from "../common/Button";
 import { cn } from "../../utils/cn";
 import { bidApi } from "../../services/bidApi";
+import { landApi } from "../../services/landApi";
 import { subscribeToBidEvents } from "../../services/bidEvents";
 import {
   Home,
@@ -21,10 +22,16 @@ import {
   Banknote,
   Send,
   Building2,
+  Trash2,
+  CheckCircle,
 } from "lucide-react";
 
 export default function LandOwnerDashboard({ data, onRefresh }) {
   const [showPlansModal, setShowPlansModal] = useState(false);
+  const [actionLoadingId, setActionLoadingId] = useState(null);
+  const [actionError, setActionError] = useState("");
+  const [landActionLoadingId, setLandActionLoadingId] = useState(null);
+  const [landActionError, setLandActionError] = useState("");
   const navigate = useNavigate();
 
   const {
@@ -40,12 +47,78 @@ export default function LandOwnerDashboard({ data, onRefresh }) {
     activity = [],
   } = data || {};
 
-  const activeParcelsCount = stats?.activeListings !== undefined ? stats.activeListings : 5;
-  const bidsReceivedCount = stats?.bidsReceived !== undefined ? stats.bidsReceived : 8;
+  const activeParcelsCount = stats?.activeListings !== undefined ? stats.activeListings : (listings.all ? listings.all.filter(l => l.status === "ACTIVE").length : 0);
+  const bidsReceivedCount = stats?.bidsReceived !== undefined ? stats.bidsReceived : (bidsReceived.all ? bidsReceived.all.length : 0);
   const portfolioValueDisplay = stats?.portfolioValue
     ? `GHS ${stats.portfolioValue.toLocaleString()}`
     : "GHS 905,000";
   const buyerRatingDisplay = stats?.rating ? `${stats.rating} ★` : "5 ★";
+
+  // Live SSE real-time listener for incoming bids, land status updates, and deletions
+  useEffect(() => {
+    const unsubscribe = subscribeToBidEvents(
+      (event) => {
+        if (
+          event?.type === "BID_PLACED" ||
+          event?.type === "BID_STATUS_CHANGED" ||
+          event?.type === "LAND_STATUS_CHANGED" ||
+          event?.type === "LAND_DELETED"
+        ) {
+          if (onRefresh) onRefresh();
+        }
+      },
+      { userId: user?.id }
+    );
+    return () => unsubscribe();
+  }, [user?.id, onRefresh]);
+
+  const handleUpdateBidStatus = async (bidId, newStatus) => {
+    setActionLoadingId(bidId);
+    setActionError("");
+    try {
+      await bidApi.updateStatus(bidId, newStatus);
+      if (onRefresh) await onRefresh();
+    } catch (err) {
+      console.error(`Failed to update bid to ${newStatus}:`, err);
+      setActionError(err.message || `Failed to update bid status to ${newStatus}.`);
+    } finally {
+      setActionLoadingId(null);
+    }
+  };
+
+  const handleMarkAsSold = async (landId, landTitle) => {
+    if (!window.confirm(`Are you sure you want to mark "${landTitle}" as SOLD? This will close bidding and purchases for this land.`)) {
+      return;
+    }
+    setLandActionLoadingId(landId);
+    setLandActionError("");
+    try {
+      await landApi.markSold(landId);
+      if (onRefresh) await onRefresh();
+    } catch (err) {
+      console.error("Failed to mark land as sold:", err);
+      setLandActionError(err.message || "Failed to mark land as sold.");
+    } finally {
+      setLandActionLoadingId(null);
+    }
+  };
+
+  const handleDeleteListing = async (landId, landTitle) => {
+    if (!window.confirm(`Are you sure you want to permanently delete "${landTitle}"? This action cannot be undone.`)) {
+      return;
+    }
+    setLandActionLoadingId(landId);
+    setLandActionError("");
+    try {
+      await landApi.delete(landId);
+      if (onRefresh) await onRefresh();
+    } catch (err) {
+      console.error("Failed to delete listing:", err);
+      setLandActionError(err.message || "Failed to delete listing.");
+    } finally {
+      setLandActionLoadingId(null);
+    }
+  };
 
   // Quick actions matching screenshot exactly
   const quickActions = [
@@ -74,36 +147,6 @@ export default function LandOwnerDashboard({ data, onRefresh }) {
       to: "/ai",
     },
   ];
-
-  const [actionLoadingId, setActionLoadingId] = useState(null);
-  const [actionError, setActionError] = useState("");
-
-  // Live SSE real-time listener for incoming bids and bid updates
-  useEffect(() => {
-    const unsubscribe = subscribeToBidEvents(
-      (event) => {
-        if (event?.type === "BID_PLACED" || event?.type === "BID_STATUS_CHANGED") {
-          if (onRefresh) onRefresh();
-        }
-      },
-      { userId: user?.id }
-    );
-    return () => unsubscribe();
-  }, [user?.id, onRefresh]);
-
-  const handleUpdateBidStatus = async (bidId, newStatus) => {
-    setActionLoadingId(bidId);
-    setActionError("");
-    try {
-      await bidApi.updateStatus(bidId, newStatus);
-      if (onRefresh) await onRefresh();
-    } catch (err) {
-      console.error(`Failed to update bid to ${newStatus}:`, err);
-      setActionError(err.message || `Failed to update bid status to ${newStatus}.`);
-    } finally {
-      setActionLoadingId(null);
-    }
-  };
 
   // Default bid offers matching screenshot if backend bids array is empty
   const displayedBids =
@@ -296,12 +339,18 @@ export default function LandOwnerDashboard({ data, onRefresh }) {
                 <h2 className="text-base font-extrabold text-slate-900 sm:text-lg tracking-tight">
                   Your Listed Land Parcels
                 </h2>
-                <p className="text-xs text-slate-500">Manage land inventory, pricing, and view auction status</p>
+                <p className="text-xs text-slate-500">Manage land inventory, mark parcels as sold, and view auction status</p>
               </div>
               <Button as={Link} to="/list-your-land" variant="primary" size="xs" className="bg-[#059669] hover:bg-[#047857]">
                 + Add Land
               </Button>
             </div>
+
+            {landActionError && (
+              <div className="mt-3 rounded-xl bg-rose-50 p-3 text-xs font-semibold text-rose-700 border border-rose-200">
+                {landActionError}
+              </div>
+            )}
 
             {listings?.all?.length === 0 ? (
               <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-6 my-4 text-center text-xs text-slate-500 font-semibold">
@@ -319,22 +368,87 @@ export default function LandOwnerDashboard({ data, onRefresh }) {
                         <span className="rounded-md bg-emerald-100 px-2 py-0.5 text-[10px] font-extrabold text-emerald-800">
                           {l.category || "Residential"}
                         </span>
-                        <span className="text-[10px] font-extrabold uppercase text-slate-400">
+                        <span
+                          className={cn(
+                            "rounded-md px-2 py-0.5 text-[10px] font-extrabold uppercase tracking-wider",
+                            l.status === "ACTIVE" && "bg-emerald-100 text-emerald-800",
+                            l.status === "SOLD" && "bg-slate-900 text-white font-black",
+                            l.status === "PENDING_REVIEW" && "bg-amber-100 text-amber-800",
+                            l.status === "DRAFT" && "bg-slate-200 text-slate-700"
+                          )}
+                        >
                           {l.status}
                         </span>
                       </div>
                       <h3 className="mt-2 font-bold text-slate-900 line-clamp-1">{l.title}</h3>
-                      <p className="mt-0.5 text-xs text-slate-500">{l.district}, {l.region}</p>
+                      <p className="mt-0.5 text-xs text-slate-500">{l.district ? `${l.district}, ` : ""}{l.region}</p>
                       <p className="mt-2 text-sm font-extrabold text-[#059669]">
                         GHS {l.totalPrice?.toLocaleString()}
                       </p>
                     </div>
 
-                    <div className="mt-3 flex items-center justify-between border-t border-slate-100 pt-2.5">
-                      <span className="text-[11px] font-medium text-slate-500">{l._count?.bids || 0} bids received</span>
-                      <Button as={Link} to={`/explore-land/${l.slug || l.id}`} variant="secondary" size="xs">
-                        View Listing
-                      </Button>
+                    <div className="mt-3.5 flex flex-col gap-2 border-t border-slate-100 pt-3">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[11px] font-medium text-slate-500">{l._count?.bids || l.bids?.length || 0} bids received</span>
+                        <Button as={Link} to={`/explore-land/${l.slug || l.id}`} variant="ghost" size="xs" className="text-[11px] text-slate-600 hover:text-slate-900">
+                          View Details &rarr;
+                        </Button>
+                      </div>
+
+                      {/* Landowner Action Controls */}
+                      <div className="flex items-center gap-2 pt-1">
+                        {l.status === "ACTIVE" ? (
+                          <>
+                            <Button
+                              type="button"
+                              variant="secondary"
+                              size="xs"
+                              disabled={landActionLoadingId === l.id}
+                              onClick={() => handleMarkAsSold(l.id, l.title)}
+                              className="flex-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border-emerald-300/60 text-[11px] font-bold py-1.5"
+                            >
+                              {landActionLoadingId === l.id ? "Updating..." : "Mark as Sold"}
+                            </Button>
+                            <Button
+                              type="button"
+                              variant="secondary"
+                              size="xs"
+                              disabled={landActionLoadingId === l.id}
+                              onClick={() => handleDeleteListing(l.id, l.title)}
+                              className="bg-rose-50 hover:bg-rose-100 text-rose-700 border-rose-200 text-[11px] font-bold py-1.5 px-2.5"
+                            >
+                              {landActionLoadingId === l.id ? "..." : "Delete Listing"}
+                            </Button>
+                          </>
+                        ) : l.status === "SOLD" ? (
+                          <>
+                            <span className="flex-1 rounded-lg bg-slate-900 py-1.5 text-center text-[11px] font-black uppercase tracking-wider text-white">
+                              SOLD
+                            </span>
+                            <Button
+                              type="button"
+                              variant="secondary"
+                              size="xs"
+                              disabled={landActionLoadingId === l.id}
+                              onClick={() => handleDeleteListing(l.id, l.title)}
+                              className="bg-rose-50 hover:bg-rose-100 text-rose-700 border-rose-200 text-[11px] font-bold py-1.5 px-2.5"
+                            >
+                              {landActionLoadingId === l.id ? "..." : "Delete Listing"}
+                            </Button>
+                          </>
+                        ) : (
+                          <Button
+                            type="button"
+                            variant="secondary"
+                            size="xs"
+                            disabled={landActionLoadingId === l.id}
+                            onClick={() => handleDeleteListing(l.id, l.title)}
+                            className="w-full bg-rose-50 hover:bg-rose-100 text-rose-700 border-rose-200 text-[11px] font-bold py-1.5"
+                          >
+                            {landActionLoadingId === l.id ? "..." : "Delete Listing"}
+                          </Button>
+                        )}
+                      </div>
                     </div>
                   </div>
                 ))}

@@ -32,8 +32,8 @@ export default function FeaturedLandCard(props) {
     )
   );
   
-  const sold = slug && isSold ? isSold(slug) : false;
-  const expired = slug && isExpired ? (!sold && isExpired(slug)) : false;
+  const sold = land.status === "SOLD" || (slug && isSold ? isSold(slug) : false);
+  const expired = land.status === "EXPIRED" || (slug && isExpired ? (!sold && isExpired(slug)) : false);
 
   return (
     <div className="flex gap-4 rounded-xl border border-ink-900/5 bg-white p-3 shadow-card">

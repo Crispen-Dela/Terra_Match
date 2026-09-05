@@ -1,5 +1,6 @@
 import prisma from "../config/prisma.js";
 import { AppError } from "../middlewares/errorHandler.js";
+import { bidEvents } from "../config/events.js";
 
 function slugify(text) {
   return text
@@ -11,11 +12,13 @@ function slugify(text) {
 
 export async function listLands(req, res, next) {
   try {
-    const { category, region, priceRange, search, status = "ACTIVE" } = req.query;
+    const { category, region, priceRange, search, status } = req.query;
 
     const where = {};
     if (status && status !== "ALL") {
       where.status = status;
+    } else if (!status) {
+      where.status = { in: ["ACTIVE", "SOLD"] };
     }
 
     if (category && category !== "All Land") {
@@ -460,6 +463,117 @@ export async function addLandOwnerReview(req, res, next) {
     res.status(201).json({
       message: "Review submitted successfully.",
       review,
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+/**
+ * Mark a land listing as SOLD (owner only)
+ */
+export async function markLandAsSold(req, res, next) {
+  try {
+    const { id } = req.params;
+
+    const land = await prisma.landListing.findFirst({
+      where: {
+        OR: [{ id }, { slug: id }],
+      },
+      include: { owner: true },
+    });
+
+    if (!land) {
+      throw new AppError("Land listing not found.", 404);
+    }
+
+    if (land.ownerId !== req.user.id && req.user.role !== "ADMIN") {
+      throw new AppError("Only the verified owner of this listing can mark it as sold.", 403);
+    }
+
+    const updatedLand = await prisma.landListing.update({
+      where: { id: land.id },
+      data: { status: "SOLD" },
+      include: {
+        owner: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+            phone: true,
+            ghanaCardVerified: true,
+            avatarUrl: true,
+          },
+        },
+        bids: {
+          orderBy: { amount: "desc" },
+          include: {
+            bidder: {
+              select: { id: true, name: true, ghanaCardVerified: true },
+            },
+          },
+        },
+      },
+    });
+
+    // Broadcast real-time SSE event to all connected clients
+    bidEvents.broadcast({
+      type: "LAND_STATUS_CHANGED",
+      landId: land.id,
+      landSlug: land.slug,
+      status: "SOLD",
+      ownerId: land.ownerId,
+      timestamp: new Date().toISOString(),
+    });
+
+    res.json({
+      message: "Land listing successfully marked as sold.",
+      land: formatLandResponse(updatedLand),
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+/**
+ * Permanently delete a land listing (owner only)
+ */
+export async function deleteLand(req, res, next) {
+  try {
+    const { id } = req.params;
+
+    const land = await prisma.landListing.findFirst({
+      where: {
+        OR: [{ id }, { slug: id }],
+      },
+    });
+
+    if (!land) {
+      throw new AppError("Land listing not found.", 404);
+    }
+
+    if (land.ownerId !== req.user.id && req.user.role !== "ADMIN") {
+      throw new AppError("Only the verified owner of this listing can delete it.", 403);
+    }
+
+    // Permanently remove listing from PostgreSQL
+    await prisma.landListing.delete({
+      where: { id: land.id },
+    });
+
+    // Broadcast real-time deletion event
+    bidEvents.broadcast({
+      type: "LAND_DELETED",
+      landId: land.id,
+      landSlug: land.slug,
+      ownerId: land.ownerId,
+      timestamp: new Date().toISOString(),
+    });
+
+    res.json({
+      message: "Land listing permanently deleted.",
+      id: land.id,
+      slug: land.slug,
     });
   } catch (error) {
     next(error);

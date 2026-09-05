@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import Button from "../common/Button";
 import { ImageSkeleton } from "../common/Skeleton";
 import NeedHelpCard from "../common/NeedHelpCard";
@@ -11,6 +11,7 @@ import { formatGHS } from "../../constants/landDetails";
 import { getLandGallery, FEATURED_LANDS } from "../../constants/lands";
 import { LAND_OWNERS } from "../../constants/landOwners";
 import { unsplashUrl, KWAME_AVATAR_ID } from "../../constants/stockImages";
+import { landApi } from "../../services/landApi";
 import { useAuction } from "../../context/AuctionContext";
 import { useAuth } from "../../context/AuthContext";
 import { cn } from "../../utils/cn";
@@ -735,6 +736,10 @@ function BidPanel({
   expired,
   onOpenBuyNow,
   isOwner = false,
+  onMarkSold,
+  onDeleteListing,
+  ownerLoading = false,
+  ownerActionError = "",
 }) {
   const [showForm, setShowForm] = useState(false);
   const [amount, setAmount] = useState(String(minNextBid));
@@ -750,6 +755,10 @@ function BidPanel({
     e.preventDefault();
     if (isOwner) {
       setError("You cannot bid on your own land listing.");
+      return;
+    }
+    if (sold) {
+      setError("This land listing has already been sold and is no longer accepting bids.");
       return;
     }
     const value = Number(amount);
@@ -790,35 +799,117 @@ function BidPanel({
   // If the signed-in user is the owner of this land listing
   if (isOwner) {
     return (
-      <div className="rounded-2xl border border-forest-200 bg-forest-50/50 p-5">
+      <div className="rounded-2xl border border-forest-200 bg-forest-50/50 p-5 space-y-4">
         <div className="flex items-center justify-between">
           <span className="rounded-full bg-forest-600 px-2.5 py-1 text-xs font-bold text-white">
             Your Listed Land
           </span>
-          <span className="text-xs font-medium text-forest-700">Owner View</span>
+          <span
+            className={cn(
+              "rounded-md px-2.5 py-1 text-[10px] font-extrabold uppercase tracking-wider",
+              sold ? "bg-slate-900 text-white" : "bg-emerald-100 text-emerald-800"
+            )}
+          >
+            {sold ? "SOLD" : "ACTIVE LISTING"}
+          </span>
         </div>
-        <p className="mt-3 text-sm text-ink-500">Current Highest Bid</p>
-        <p className="mt-1 text-2xl font-extrabold text-forest-700">{formatGHS(currentBid?.amount ?? 0)}</p>
-        <p className="mt-1 text-xs text-ink-500">
-          {currentBid?.bidder && currentBid.bidder !== "Starting Price"
-            ? `Latest bid by ${currentBid.bidder}`
-            : "No active bids placed yet"}
-        </p>
 
-        <div className="my-4 border-t border-forest-600/10" />
+        <div>
+          <p className="text-sm text-ink-500">Current Highest Bid</p>
+          <p className="mt-1 text-2xl font-extrabold text-forest-700">{formatGHS(currentBid?.amount ?? 0)}</p>
+          <p className="mt-0.5 text-xs text-ink-500">
+            {currentBid?.bidder && currentBid.bidder !== "Starting Price"
+              ? `Latest bid by ${currentBid.bidder}`
+              : "No active bids placed yet"}
+          </p>
+        </div>
 
-        <p className="text-xs leading-relaxed text-ink-600">
-          As the owner of this land listing, purchasing and bidding actions are disabled for your account. You can monitor live bids and buyer messages in your dashboard.
-        </p>
+        {ownerActionError && (
+          <div className="rounded-xl bg-rose-50 p-2.5 text-xs font-semibold text-rose-700 border border-rose-200">
+            {ownerActionError}
+          </div>
+        )}
+
+        {/* Landowner Lifecycle Controls */}
+        <div className="border-t border-forest-600/10 pt-3 space-y-2">
+          <p className="text-xs font-bold text-ink-700 uppercase tracking-wide">Owner Controls</p>
+          {!sold ? (
+            <div className="flex flex-col sm:flex-row gap-2">
+              <Button
+                type="button"
+                variant="primary"
+                size="md"
+                disabled={ownerLoading}
+                onClick={onMarkSold}
+                className="flex-1 bg-[#059669] hover:bg-[#047857] text-xs font-bold"
+              >
+                {ownerLoading ? "Updating..." : "Mark as Sold"}
+              </Button>
+              <Button
+                type="button"
+                variant="secondary"
+                size="md"
+                disabled={ownerLoading}
+                onClick={onDeleteListing}
+                className="bg-rose-50 hover:bg-rose-100 text-rose-700 border-rose-200 text-xs font-bold"
+              >
+                {ownerLoading ? "..." : "Delete Listing"}
+              </Button>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              <div className="flex items-center justify-between rounded-xl bg-slate-900 p-3 text-white">
+                <span className="text-xs font-bold uppercase tracking-wider">Status: SOLD</span>
+                <SoldBadge className="bg-white text-slate-900" />
+              </div>
+              <Button
+                type="button"
+                variant="secondary"
+                size="md"
+                disabled={ownerLoading}
+                onClick={onDeleteListing}
+                className="w-full bg-rose-50 hover:bg-rose-100 text-rose-700 border-rose-200 text-xs font-bold"
+              >
+                {ownerLoading ? "Deleting..." : "Delete Listing"}
+              </Button>
+            </div>
+          )}
+        </div>
 
         <Button
           as={Link}
           to="/dashboard"
-          variant="primary"
+          variant="outline-dark"
           size="md"
-          className="mt-4 w-full"
+          className="w-full"
         >
           Go to Land Owner Dashboard
+        </Button>
+      </div>
+    );
+  }
+
+  if (sold) {
+    return (
+      <div className="rounded-2xl border border-slate-300 bg-white p-5 space-y-3 shadow-xs">
+        <div className="flex items-center justify-between">
+          <p className="text-xs font-extrabold uppercase tracking-wider text-slate-500">Property Sold</p>
+          <SoldBadge />
+        </div>
+        <p className="mt-1 text-2xl font-extrabold text-slate-900">{formatGHS(soldAmount ?? currentBid.amount)}</p>
+        <div className="rounded-xl bg-slate-50 p-3.5 border border-slate-200 text-xs text-slate-600 space-y-1">
+          <p className="font-bold text-slate-900">This land is no longer available.</p>
+          <p>The owner has marked this listing as SOLD. Bidding, purchases, and inquiries are closed for this property.</p>
+        </div>
+
+        <Button
+          as={Link}
+          to={`/land-owner/${detail?.ownerSlug || "kwame-owusu"}`}
+          variant="outline-dark"
+          size="md"
+          className="mt-2 w-full"
+        >
+          Contact Land Owner
         </Button>
       </div>
     );
@@ -837,32 +928,7 @@ function BidPanel({
 
         <Button
           as={Link}
-          to={`/land-owner/${detail.ownerSlug}`}
-          variant="outline-dark"
-          size="md"
-          className="mt-4 w-full"
-        >
-          Contact Land Owner
-        </Button>
-      </div>
-    );
-  }
-
-  if (sold) {
-    return (
-      <div className="rounded-2xl border border-ink-900/10 bg-white p-5">
-        <div className="flex items-center justify-between">
-          <p className="text-sm text-ink-500">{soldVia === "buyNow" ? "Sold via Buy Now" : "Sold"}</p>
-          <SoldBadge />
-        </div>
-        <p className="mt-1 text-2xl font-extrabold text-ink-900">{formatGHS(soldAmount ?? currentBid.amount)}</p>
-        <p className="mt-3 text-sm text-ink-700">
-          This land is no longer available. Bidding has closed and Buy Now is disabled for this listing.
-        </p>
-
-        <Button
-          as={Link}
-          to={`/land-owner/${detail.ownerSlug}`}
+          to={`/land-owner/${detail?.ownerSlug || "kwame-owusu"}`}
           variant="outline-dark"
           size="md"
           className="mt-4 w-full"
@@ -1199,8 +1265,11 @@ function SimilarListings({ currentSlug, category }) {
 
 export default function LandDetailContent({ land, detail }) {
   const { user } = useAuth();
-  const { getRecord, placeBid, isExpired } = useAuction();
+  const { getRecord, placeBid, isExpired, syncFromLandData } = useAuction();
   const [buyNowOpen, setBuyNowOpen] = useState(false);
+  const [ownerLoading, setOwnerLoading] = useState(false);
+  const [ownerActionError, setOwnerActionError] = useState("");
+  const navigate = useNavigate();
 
   const isOwner = Boolean(
     user &&
@@ -1213,12 +1282,52 @@ export default function LandDetailContent({ land, detail }) {
   );
 
   const record = getRecord(land?.slug);
-  const sold = record?.status === "sold";
+  const sold = record?.status === "sold" || land?.status === "SOLD";
   const expired = !sold && isExpired(land?.slug);
+
+  async function handleMarkAsSold() {
+    if (!window.confirm(`Are you sure you want to mark "${land.name || land.title}" as SOLD? This will close bidding and purchases for this land.`)) {
+      return;
+    }
+    setOwnerLoading(true);
+    setOwnerActionError("");
+    try {
+      const res = await landApi.markSold(land.id || land.slug);
+      if (res && res.land) {
+        syncFromLandData(land.slug, res.land);
+      } else {
+        syncFromLandData(land.slug, { ...land, status: "SOLD" });
+      }
+    } catch (err) {
+      console.error("Failed to mark land as sold:", err);
+      setOwnerActionError(err.message || "Failed to mark land as sold.");
+    } finally {
+      setOwnerLoading(false);
+    }
+  }
+
+  async function handleDeleteListing() {
+    if (!window.confirm(`Are you sure you want to permanently delete "${land.name || land.title}"? This action cannot be undone.`)) {
+      return;
+    }
+    setOwnerLoading(true);
+    setOwnerActionError("");
+    try {
+      await landApi.delete(land.id || land.slug);
+      navigate("/dashboard");
+    } catch (err) {
+      console.error("Failed to delete listing:", err);
+      setOwnerActionError(err.message || "Failed to delete listing.");
+      setOwnerLoading(false);
+    }
+  }
 
   function handlePlaceBid(amount) {
     if (isOwner) {
       return { ok: false, reason: "owner" };
+    }
+    if (sold) {
+      return { ok: false, reason: "sold" };
     }
     return placeBid(land?.slug, amount, user?.name || "You");
   }
@@ -1233,7 +1342,7 @@ export default function LandDetailContent({ land, detail }) {
           <span>
             {record?.soldVia === "buyNow"
               ? "This land was purchased via Buy Now and is no longer available."
-              : "This auction has ended and the land is no longer available."}
+              : "This property has been marked as SOLD and is no longer available for bidding or purchase."}
           </span>
         </div>
       )}
@@ -1273,8 +1382,12 @@ export default function LandDetailContent({ land, detail }) {
             soldVia={record?.soldVia}
             soldAmount={record?.soldAmount}
             expired={expired}
-            onOpenBuyNow={() => !isOwner && setBuyNowOpen(true)}
+            onOpenBuyNow={() => !isOwner && !sold && setBuyNowOpen(true)}
             isOwner={isOwner}
+            onMarkSold={handleMarkAsSold}
+            onDeleteListing={handleDeleteListing}
+            ownerLoading={ownerLoading}
+            ownerActionError={ownerActionError}
           />
           <SellerInfoCard detail={detail} land={land} />
           <BidHistoryCard bidHistory={record?.bidHistory || []} />
