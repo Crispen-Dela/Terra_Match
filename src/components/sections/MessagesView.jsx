@@ -135,9 +135,9 @@ export default function MessagesView() {
       (c) =>
         c.id === selectedId ||
         c.cid === selectedId ||
-        (contactId && c.otherUserId === contactId) ||
-        (projectId && c.projectContext?.id === projectId) ||
-        (landId && c.landContext?.id === landId)
+        (contactId && (c.otherUserId === contactId || c.id === contactId || c.cid === contactId)) ||
+        (!contactId && projectId && c.projectContext?.id === projectId) ||
+        (!contactId && landId && c.landContext?.id === landId)
     ) || (conversations.length > 0 && !contactId && !projectId && !landId ? conversations[0] : null);
 
   useEffect(() => {
@@ -154,10 +154,11 @@ export default function MessagesView() {
 
   async function handleSend(e) {
     e.preventDefault();
-    if (!selectedId || !draft.trim()) return;
+    const activeId = selected?.id || selectedId;
+    if (!activeId || !draft.trim()) return;
     const text = draft.trim();
     setDraft("");
-    await sendMessage(selectedId, text);
+    await sendMessage(activeId, text);
   }
 
   return (

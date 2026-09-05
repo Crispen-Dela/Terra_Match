@@ -106,7 +106,7 @@ export default function SubmitProposalModal({
               onClick={handleModalClose}
               className="w-full sm:w-auto"
             >
-              Go to Messages
+              Chat with Client
             </Button>
           </div>
         </div>

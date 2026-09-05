@@ -46,7 +46,7 @@ export async function createOrGetChannel(req, res, next) {
     }
 
     const { targetUserId, targetSlug, landId, projectId, initialMessage } = req.body;
-    let resolvedTargetUserId = targetUserId;
+    let resolvedTargetUserId = targetUserId || null;
     let targetLand = null;
     let targetProject = null;
 
@@ -55,9 +55,10 @@ export async function createOrGetChannel(req, res, next) {
         where: { OR: [{ id: landId }, { slug: landId }] },
         include: { owner: true },
       });
-      if (targetLand) {
+      // If no explicit targetUserId provided, resolve to the land owner
+      if (targetLand && !resolvedTargetUserId) {
         if (targetLand.ownerId === req.user.id) {
-          throw new AppError("Land owners cannot initiate a purchase conversation on their own land listing.", 400);
+          throw new AppError("Land owners cannot initiate an inquiry on their own land listing without selecting a buyer/bidder.", 400);
         }
         resolvedTargetUserId = targetLand.ownerId;
       }
@@ -68,7 +69,8 @@ export async function createOrGetChannel(req, res, next) {
         where: { OR: [{ id: projectId }, { slug: projectId }] },
         include: { client: true },
       });
-      if (targetProject) {
+      // If no explicit targetUserId provided, resolve to the project client
+      if (targetProject && !resolvedTargetUserId) {
         resolvedTargetUserId = targetProject.clientId;
       }
     }
@@ -90,34 +92,60 @@ export async function createOrGetChannel(req, res, next) {
       }
     }
 
-    if (!resolvedTargetUserId) {
-      // Fallback to active admin/support user
-      const supportUser = await prisma.user.findFirst({
-        where: { role: "ADMIN" },
+    // Resolve targetUser from Prisma flexibly by ID, email, name, or slug
+    let targetUser = null;
+    if (resolvedTargetUserId && resolvedTargetUserId !== req.user.id) {
+      targetUser = await prisma.user.findFirst({
+        where: {
+          OR: [
+            { id: resolvedTargetUserId },
+            { email: { equals: resolvedTargetUserId, mode: "insensitive" } },
+            { name: { equals: resolvedTargetUserId, mode: "insensitive" } },
+          ],
+        },
+        include: { contractorProfile: true },
       });
-      resolvedTargetUserId = supportUser ? supportUser.id : req.user.id;
+
+      if (!targetUser) {
+        const allUsers = await prisma.user.findMany({
+          include: { contractorProfile: true },
+        });
+        targetUser = allUsers.find(
+          (u) =>
+            u.id === resolvedTargetUserId ||
+            slugify(u.name) === slugify(resolvedTargetUserId) ||
+            (u.contractorProfile && slugify(u.contractorProfile.companyName) === slugify(resolvedTargetUserId)) ||
+            (u.email && u.email.toLowerCase() === resolvedTargetUserId.toLowerCase())
+        );
+      }
     }
 
-    if (resolvedTargetUserId === req.user.id) {
+    // Fallback to active admin/support user if no valid target or target is self
+    if (!targetUser || targetUser.id === req.user.id) {
+      const supportUser =
+        (await prisma.user.findFirst({
+          where: {
+            role: "ADMIN",
+            id: { not: req.user.id },
+          },
+        })) ||
+        (await prisma.user.findFirst({
+          where: { id: { not: req.user.id } },
+        }));
+      if (supportUser) {
+        targetUser = supportUser;
+        resolvedTargetUserId = supportUser.id;
+      }
+    }
+
+    if (!targetUser || targetUser.id === req.user.id) {
       throw new AppError("Cannot create a conversation with yourself.", 400);
     }
 
-    // Ensure target user exists and is synced to Stream
-    let targetUser = await prisma.user.findFirst({
-      where: {
-        OR: [
-          { id: resolvedTargetUserId },
-          { email: resolvedTargetUserId },
-        ],
-      },
-    });
+    resolvedTargetUserId = targetUser.id;
 
-    if (targetUser) {
-      resolvedTargetUserId = targetUser.id;
-      await upsertStreamUser(targetUser);
-    }
-
-    // Ensure current user is synced to Stream
+    // Ensure target user and current user are synced to Stream
+    await upsertStreamUser(targetUser);
     await upsertStreamUser(req.user);
 
     // UNIQUE CHANNEL ID: Derived ONLY from sorted member IDs (userA_userB)

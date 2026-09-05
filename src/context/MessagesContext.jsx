@@ -285,7 +285,16 @@ export function MessagesProvider({ children }) {
   const sendMessage = useCallback(
     async (channelId, text) => {
       if (!text || !text.trim() || !clientRef.current) return;
-      const targetChan = rawChannels.find((c) => c.id === channelId);
+      let targetChan = rawChannels.find((c) => c.id === channelId || c.cid === channelId);
+      if (!targetChan && channelId) {
+        try {
+          const rawId = channelId.includes(":") ? channelId.split(":")[1] : channelId;
+          targetChan = clientRef.current.channel("messaging", rawId);
+          await targetChan.watch();
+        } catch (e) {
+          console.warn("Could not resolve channel for message:", e);
+        }
+      }
       if (targetChan) {
         await targetChan.sendMessage({ text: text.trim() });
         setUpdateTick((t) => t + 1);
@@ -297,7 +306,15 @@ export function MessagesProvider({ children }) {
   // Mark channel messages as read
   const markRead = useCallback(
     async (channelId) => {
-      const targetChan = rawChannels.find((c) => c.id === channelId);
+      let targetChan = rawChannels.find((c) => c.id === channelId || c.cid === channelId);
+      if (!targetChan && channelId && clientRef.current) {
+        try {
+          const rawId = channelId.includes(":") ? channelId.split(":")[1] : channelId;
+          targetChan = clientRef.current.channel("messaging", rawId);
+        } catch (e) {
+          // ignore
+        }
+      }
       if (targetChan) {
         await targetChan.markRead();
         setUpdateTick((t) => t + 1);
@@ -314,8 +331,8 @@ export function MessagesProvider({ children }) {
       const directMatch = conversations.find(
         (c) =>
           (contactParam && (c.id === contactParam || c.cid === contactParam || c.otherUserId === contactParam)) ||
-          (projectId && c.projectContext?.id === projectId) ||
-          (landId && c.landContext?.id === landId)
+          (!contactParam && projectId && c.projectContext?.id === projectId) ||
+          (!contactParam && landId && c.landContext?.id === landId)
       );
       if (directMatch) {
         setActiveChannelId(directMatch.id);

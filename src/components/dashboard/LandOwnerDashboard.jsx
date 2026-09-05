@@ -80,17 +80,19 @@ export default function LandOwnerDashboard({ data, onRefresh }) {
       : [
           {
             id: 1,
+            landId: "east-legon-hills",
             landTitle: "East Legon Hills",
-            bidder: { name: "Kofi Addo", phone: "+233 50 112 2334" },
+            bidder: { id: "kofi.addo@gmail.com", name: "Kofi Addo", phone: "+233 50 112 2334" },
             amount: 145000,
             buyNowPrice: 185000,
             status: "ACTIVE",
           },
           {
             id: 2,
+            landId: "east-legon-hills",
             landTitle: "East Legon Hills",
-            bidder: { name: "Kofi Addo", phone: "+233 50 112 2334" },
-            amount: 145000,
+            bidder: { id: "abena.mensah@gmail.com", name: "Abena Mensah", phone: "+233 24 556 7890" },
+            amount: 150000,
             buyNowPrice: 185000,
             status: "ACTIVE",
           },
