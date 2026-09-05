@@ -849,7 +849,7 @@ function BidPanel({
                 size="md"
                 disabled={ownerLoading}
                 onClick={onMarkSold}
-                className="flex-1 bg-slate-900 hover:bg-slate-800 text-white text-xs font-black"
+                className="flex-1 bg-slate-900 hover:bg-slate-800 text-white text-xs font-black py-2.5 shadow-xs"
               >
                 {ownerLoading ? "Updating..." : "Mark as Sold"}
               </Button>
@@ -859,15 +859,15 @@ function BidPanel({
                 size="md"
                 disabled={ownerLoading}
                 onClick={onDeleteListing}
-                className="bg-slate-100 hover:bg-slate-200 text-slate-900 border border-slate-300 hover:border-slate-400 font-black text-xs shadow-2xs hover:text-black"
+                className="bg-slate-900 hover:bg-red-700 text-white font-black text-xs py-2.5 px-4 shadow-xs transition-colors"
               >
-                <Trash2Icon className="h-4 w-4 mr-1 text-slate-900 inline" />
+                <Trash2Icon className="h-4 w-4 mr-1 text-white inline" />
                 {ownerLoading ? "..." : "Delete Listing"}
               </Button>
             </div>
           ) : (
             <div className="space-y-2">
-              <div className="flex items-center justify-between rounded-xl bg-slate-900 p-3 text-white">
+              <div className="flex items-center justify-between rounded-xl bg-slate-900 p-3 text-white shadow-xs">
                 <span className="text-xs font-bold uppercase tracking-wider">Status: SOLD</span>
                 <SoldBadge className="bg-white text-slate-900" />
               </div>
@@ -877,9 +877,9 @@ function BidPanel({
                 size="md"
                 disabled={ownerLoading}
                 onClick={onDeleteListing}
-                className="w-full bg-slate-100 hover:bg-slate-200 text-slate-900 border border-slate-300 hover:border-slate-400 font-black text-xs py-2 shadow-2xs hover:text-black"
+                className="w-full bg-slate-900 hover:bg-red-700 text-white font-black text-xs py-2.5 shadow-xs transition-colors"
               >
-                <Trash2Icon className="h-4 w-4 mr-1 text-slate-900 inline" />
+                <Trash2Icon className="h-4 w-4 mr-1 text-white inline" />
                 {ownerLoading ? "Deleting..." : "Delete Listing"}
               </Button>
             </div>
