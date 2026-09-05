@@ -849,7 +849,7 @@ function BidPanel({
                 size="md"
                 disabled={ownerLoading}
                 onClick={onMarkSold}
-                className="flex-1 bg-[#059669] hover:bg-[#047857] text-xs font-bold"
+                className="flex-1 bg-slate-900 hover:bg-slate-800 text-white text-xs font-black"
               >
                 {ownerLoading ? "Updating..." : "Mark as Sold"}
               </Button>
@@ -859,9 +859,9 @@ function BidPanel({
                 size="md"
                 disabled={ownerLoading}
                 onClick={onDeleteListing}
-                className="bg-red-50 hover:bg-red-100 text-red-700 border border-red-300 font-extrabold text-xs shadow-2xs hover:text-red-800"
+                className="bg-slate-100 hover:bg-slate-200 text-slate-900 border border-slate-300 hover:border-slate-400 font-black text-xs shadow-2xs hover:text-black"
               >
-                <Trash2Icon className="h-4 w-4 mr-1 text-red-600 inline" />
+                <Trash2Icon className="h-4 w-4 mr-1 text-slate-900 inline" />
                 {ownerLoading ? "..." : "Delete Listing"}
               </Button>
             </div>
@@ -877,9 +877,9 @@ function BidPanel({
                 size="md"
                 disabled={ownerLoading}
                 onClick={onDeleteListing}
-                className="w-full bg-red-50 hover:bg-red-100 text-red-700 border border-red-300 font-extrabold text-xs py-2 shadow-2xs hover:text-red-800"
+                className="w-full bg-slate-100 hover:bg-slate-200 text-slate-900 border border-slate-300 hover:border-slate-400 font-black text-xs py-2 shadow-2xs hover:text-black"
               >
-                <Trash2Icon className="h-4 w-4 mr-1 text-red-600 inline" />
+                <Trash2Icon className="h-4 w-4 mr-1 text-slate-900 inline" />
                 {ownerLoading ? "Deleting..." : "Delete Listing"}
               </Button>
             </div>

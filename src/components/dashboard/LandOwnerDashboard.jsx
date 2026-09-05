@@ -409,7 +409,7 @@ export default function LandOwnerDashboard({ data, onRefresh }) {
                               size="xs"
                               disabled={landActionLoadingId === l.id}
                               onClick={() => handleMarkAsSold(l.id, l.title)}
-                              className="flex-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 font-extrabold text-[11px] py-1.5 shadow-2xs"
+                              className="flex-1 bg-slate-900 hover:bg-slate-800 text-white font-extrabold text-[12px] py-1.5 shadow-2xs"
                             >
                               {landActionLoadingId === l.id ? "Updating..." : "Mark as Sold"}
                             </Button>
@@ -419,15 +419,15 @@ export default function LandOwnerDashboard({ data, onRefresh }) {
                               size="xs"
                               disabled={landActionLoadingId === l.id}
                               onClick={() => handleDeleteListing(l.id, l.title)}
-                              className="bg-red-50 hover:bg-red-100 text-red-700 border border-red-300 font-extrabold text-[11px] py-1.5 px-3 transition-colors shadow-2xs hover:text-red-800"
+                              className="bg-slate-100 hover:bg-slate-200 text-slate-900 border border-slate-300 hover:border-slate-400 font-black text-[12px] py-1.5 px-3 transition-colors shadow-2xs hover:text-black"
                             >
-                              <Trash2 className="h-3.5 w-3.5 mr-1 text-red-600 inline" />
+                              <Trash2 className="h-3.5 w-3.5 mr-1 text-slate-900 inline" />
                               {landActionLoadingId === l.id ? "..." : "Delete Listing"}
                             </Button>
                           </>
                         ) : l.status === "SOLD" ? (
                           <>
-                            <span className="flex-1 rounded-lg bg-slate-900 py-1.5 text-center text-[11px] font-black uppercase tracking-wider text-white">
+                            <span className="flex-1 rounded-lg bg-slate-900 py-1.5 text-center text-[12px] font-black uppercase tracking-wider text-white shadow-2xs">
                               SOLD
                             </span>
                             <Button
@@ -436,9 +436,9 @@ export default function LandOwnerDashboard({ data, onRefresh }) {
                               size="xs"
                               disabled={landActionLoadingId === l.id}
                               onClick={() => handleDeleteListing(l.id, l.title)}
-                              className="bg-red-50 hover:bg-red-100 text-red-700 border border-red-300 font-extrabold text-[11px] py-1.5 px-3 transition-colors shadow-2xs hover:text-red-800"
+                              className="bg-slate-100 hover:bg-slate-200 text-slate-900 border border-slate-300 hover:border-slate-400 font-black text-[12px] py-1.5 px-3 transition-colors shadow-2xs hover:text-black"
                             >
-                              <Trash2 className="h-3.5 w-3.5 mr-1 text-red-600 inline" />
+                              <Trash2 className="h-3.5 w-3.5 mr-1 text-slate-900 inline" />
                               {landActionLoadingId === l.id ? "..." : "Delete Listing"}
                             </Button>
                           </>
@@ -449,9 +449,9 @@ export default function LandOwnerDashboard({ data, onRefresh }) {
                             size="xs"
                             disabled={landActionLoadingId === l.id}
                             onClick={() => handleDeleteListing(l.id, l.title)}
-                            className="w-full bg-red-50 hover:bg-red-100 text-red-700 border border-red-300 font-extrabold text-[11px] py-1.5 shadow-2xs hover:text-red-800"
+                            className="w-full bg-slate-100 hover:bg-slate-200 text-slate-900 border border-slate-300 hover:border-slate-400 font-black text-[12px] py-1.5 shadow-2xs hover:text-black"
                           >
-                            <Trash2 className="h-3.5 w-3.5 mr-1 text-red-600 inline" />
+                            <Trash2 className="h-3.5 w-3.5 mr-1 text-slate-900 inline" />
                             {landActionLoadingId === l.id ? "..." : "Delete Listing"}
                           </Button>
                         )}
