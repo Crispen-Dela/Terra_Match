@@ -323,11 +323,12 @@ export async function getDashboardData(req, res, next) {
       // Build Activity Stream
       const activity = [];
       projectBids.slice(0, 3).forEach((b) => {
+        const amount = b.bidAmount ?? b.proposedAmount ?? 0;
         activity.push({
           id: `bid-${b.id}`,
           type: "BID_UPDATE",
-          title: `Bid ${b.status}: ${b.project.title}`,
-          description: `GHS ${b.proposedAmount.toLocaleString()} • ${b.estimatedDuration || "Standard timeline"}`,
+          title: `Bid ${b.status}: ${b.project?.title || "Construction Project"}`,
+          description: `GHS ${amount.toLocaleString()} • ${b.estimatedDuration || "Standard timeline"}`,
           timestamp: b.createdAt,
           status: b.status,
         });
@@ -336,7 +337,7 @@ export async function getDashboardData(req, res, next) {
         activity.push({
           id: `review-${r.id}`,
           type: "NEW_REVIEW",
-          title: `New ${r.rating}-Star Review from ${r.author.name}`,
+          title: `New ${r.rating}-Star Review from ${r.author?.name || "Client"}`,
           description: r.comment,
           timestamp: r.createdAt,
           status: "REVIEW",
@@ -457,11 +458,12 @@ export async function getDashboardData(req, res, next) {
       // Build Activity Stream
       const activity = [];
       allBidsReceived.slice(0, 4).forEach((b) => {
+        const amount = b.amount ?? 0;
         activity.push({
           id: `bid-${b.id}`,
           type: "NEW_BID",
-          title: `New Bid on ${b.landTitle}: GHS ${b.amount.toLocaleString()}`,
-          description: `Placed by ${b.bidder.name} (${b.status})`,
+          title: `New Bid on ${b.landTitle || "Land"}: GHS ${amount.toLocaleString()}`,
+          description: `Placed by ${b.bidder?.name || "Buyer"} (${b.status || "ACTIVE"})`,
           timestamp: b.createdAt,
           status: b.status,
         });
@@ -470,18 +472,19 @@ export async function getDashboardData(req, res, next) {
         activity.push({
           id: `review-${r.id}`,
           type: "NEW_REVIEW",
-          title: `New ${r.rating}-Star Review from ${r.author.name}`,
+          title: `New ${r.rating}-Star Review from ${r.author?.name || "Client"}`,
           description: r.comment,
           timestamp: r.createdAt,
           status: "REVIEW",
         });
       });
       lands.slice(0, 2).forEach((l) => {
+        const price = l.totalPrice ?? 0;
         activity.push({
           id: `land-${l.id}`,
           type: "LISTING",
           title: `Land Listed: ${l.title}`,
-          description: `${l.district}, ${l.region} • GHS ${l.totalPrice.toLocaleString()}`,
+          description: `${l.district || ""}, ${l.region || ""} • GHS ${price.toLocaleString()}`,
           timestamp: l.createdAt,
           status: l.status,
         });
@@ -595,11 +598,13 @@ export async function getDashboardData(req, res, next) {
       // Activity Stream
       const activity = [];
       myBids.slice(0, 4).forEach((b) => {
+        const amount = b.amount ?? 0;
+        const topBid = b.land?.currentBid ?? b.amount ?? 0;
         activity.push({
           id: `bid-${b.id}`,
           type: "MY_BID",
-          title: `Bid on ${b.land.title}: GHS ${b.amount.toLocaleString()}`,
-          description: `Current Status: ${b.status} (Top bid: GHS ${b.land.currentBid?.toLocaleString() || b.amount.toLocaleString()})`,
+          title: `Bid on ${b.land?.title || "Land"}: GHS ${amount.toLocaleString()}`,
+          description: `Current Status: ${b.status} (Top bid: GHS ${topBid.toLocaleString()})`,
           timestamp: b.createdAt,
           status: b.status,
         });
@@ -609,7 +614,7 @@ export async function getDashboardData(req, res, next) {
           id: `proj-${p.id}`,
           type: "PROJECT",
           title: `Project Posted: ${p.title}`,
-          description: `${p.bids.length} contractor proposals received`,
+          description: `${p.bids?.length || 0} contractor proposals received`,
           timestamp: p.createdAt,
           status: p.status,
         });

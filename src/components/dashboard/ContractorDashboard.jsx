@@ -158,7 +158,7 @@ export default function ContractorDashboard({ data, onRefresh }) {
                       </p>
                       <div className="mt-1.5 flex flex-wrap items-center gap-2 text-xs">
                         <span className="font-semibold text-forest-700">
-                          Proposed: GHS {b.proposedAmount?.toLocaleString()}
+                          Proposed: GHS {(b.bidAmount ?? b.proposedAmount ?? 0).toLocaleString()}
                         </span>
                         <span className="text-ink-300">•</span>
                         <span className="text-ink-500">{b.estimatedDuration || "Standard timeline"}</span>
