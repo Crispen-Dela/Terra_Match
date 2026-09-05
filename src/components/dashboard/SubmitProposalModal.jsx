@@ -101,7 +101,7 @@ export default function SubmitProposalModal({
             </Button>
             <Button
               as={Link}
-              to="/messages"
+              to={`/messages?contact=${encodeURIComponent(project.client?.id || project.clientId || "")}&project=${encodeURIComponent(project.id || "")}`}
               variant="outline-dark"
               onClick={handleModalClose}
               className="w-full sm:w-auto"

@@ -66,13 +66,41 @@ function LandContextCard({ landContext }) {
   );
 }
 
+function ProjectContextCard({ projectContext }) {
+  return (
+    <div className="flex items-center gap-3 border-b border-ink-900/10 bg-amber-50/70 px-4 py-3">
+      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-amber-100 text-amber-800">
+        <svg viewBox="0 0 24 24" className="h-5 w-5 fill-none stroke-current" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z" />
+          <polyline points="9 22 9 12 15 12 15 22" />
+        </svg>
+      </div>
+      <div className="min-w-0 flex-1">
+        <div className="flex items-center gap-2">
+          <span className="rounded bg-amber-200/80 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-amber-900">
+            Tender Project Direct Chat
+          </span>
+        </div>
+        <p className="truncate text-sm font-bold text-ink-900">{projectContext.title || "Construction Project"}</p>
+        {(projectContext.location || projectContext.budgetRange) && (
+          <p className="truncate text-xs text-ink-600">
+            {[projectContext.location, projectContext.budgetRange].filter(Boolean).join(" · ")}
+          </p>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export default function MessagesView() {
   const { conversations, totalUnread, ensureConversation, markRead, sendMessage, activeChannelId, setActiveChannelId } = useMessages();
   const [selectedId, setSelectedId] = useState(activeChannelId || null);
   const [draft, setDraft] = useState("");
   const [justSentNotice, setJustSentNotice] = useState(false);
   const [searchParams] = useSearchParams();
-  const contactId = searchParams.get("contact");
+  const contactId = searchParams.get("contact") || searchParams.get("user") || searchParams.get("id");
+  const projectId = searchParams.get("project") || searchParams.get("projectId");
+  const landId = searchParams.get("land") || searchParams.get("landId");
 
   const messagesEndRef = useRef(null);
 
@@ -83,19 +111,34 @@ export default function MessagesView() {
     }
   }, [activeChannelId]);
 
-  // Handle URL contact query parameter
+  // Handle URL contact/project/land query parameters
   useEffect(() => {
-    if (!contactId) return;
-    const resolvedId = ensureConversation(contactId);
-    if (resolvedId) {
-      setSelectedId(resolvedId);
-      markRead(resolvedId);
-      setJustSentNotice(true);
-    }
-  }, [contactId, ensureConversation, markRead]);
+    if (!contactId && !projectId && !landId) return;
+
+    let isMounted = true;
+    ensureConversation(contactId, { projectId, landId }).then((resolvedId) => {
+      if (isMounted && resolvedId) {
+        setSelectedId(resolvedId);
+        markRead(resolvedId);
+        setJustSentNotice(true);
+      }
+    });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [contactId, projectId, landId, ensureConversation, markRead]);
 
   // Auto-scroll to bottom of messages
-  const selected = conversations.find((c) => c.id === selectedId) || null;
+  const selected =
+    conversations.find(
+      (c) =>
+        c.id === selectedId ||
+        c.cid === selectedId ||
+        (contactId && c.otherUserId === contactId) ||
+        (projectId && c.projectContext?.id === projectId) ||
+        (landId && c.landContext?.id === landId)
+    ) || (conversations.length > 0 && !contactId && !projectId && !landId ? conversations[0] : null);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -222,6 +265,7 @@ export default function MessagesView() {
                 </div>
 
                 {selected.landContext && <LandContextCard landContext={selected.landContext} />}
+                {selected.projectContext && <ProjectContextCard projectContext={selected.projectContext} />}
 
                 <div className="flex-1 space-y-3 overflow-y-auto px-4 py-5">
                   {(!selected.messages || selected.messages.length === 0) && (

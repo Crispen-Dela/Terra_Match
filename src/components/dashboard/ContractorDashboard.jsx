@@ -176,7 +176,12 @@ export default function ContractorDashboard({ data, onRefresh }) {
                       >
                         {b.status}
                       </span>
-                      <Button as={Link} to="/messages" variant="ghost" size="xs">
+                      <Button
+                        as={Link}
+                        to={`/messages?contact=${encodeURIComponent(b.project?.client?.id || b.project?.clientId || "")}&project=${encodeURIComponent(b.project?.id || b.projectId || "")}`}
+                        variant="ghost"
+                        size="xs"
+                      >
                         Chat
                       </Button>
                     </div>

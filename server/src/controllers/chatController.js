@@ -103,11 +103,17 @@ export async function createOrGetChannel(req, res, next) {
     }
 
     // Ensure target user exists and is synced to Stream
-    const targetUser = await prisma.user.findUnique({
-      where: { id: resolvedTargetUserId },
+    let targetUser = await prisma.user.findFirst({
+      where: {
+        OR: [
+          { id: resolvedTargetUserId },
+          { email: resolvedTargetUserId },
+        ],
+      },
     });
 
     if (targetUser) {
+      resolvedTargetUserId = targetUser.id;
       await upsertStreamUser(targetUser);
     }
 
@@ -124,25 +130,68 @@ export async function createOrGetChannel(req, res, next) {
     const channelData = {
       members,
       created_by_id: req.user.id,
-      name: targetLand ? `Inquiry: ${targetLand.title}` : targetProject ? `Project: ${targetProject.title}` : `${req.user.name} & ${targetUser?.name || "User"}`,
+      name: targetLand
+        ? `Inquiry: ${targetLand.title}`
+        : targetProject
+        ? `Project: ${targetProject.title}`
+        : `${req.user.name} & ${targetUser?.name || "User"}`,
       landId: targetLand ? targetLand.id : undefined,
       landTitle: targetLand ? targetLand.title : undefined,
       landSlug: targetLand ? targetLand.slug : undefined,
-      landPrice: targetLand ? (targetLand.buyNowPrice || targetLand.totalPrice) : undefined,
+      landPrice: targetLand ? targetLand.buyNowPrice || targetLand.totalPrice : undefined,
       landLocation: targetLand ? targetLand.address : undefined,
       landImage: targetLand && Array.isArray(targetLand.images) && targetLand.images[0] ? targetLand.images[0] : undefined,
       projectId: targetProject ? targetProject.id : undefined,
       projectTitle: targetProject ? targetProject.title : undefined,
+      projectLocation: targetProject ? targetProject.location : undefined,
+      projectBudget: targetProject ? targetProject.budgetRange : undefined,
     };
 
     const channel = streamServerClient.channel("messaging", channelId, channelData);
     await channel.create();
-    
-    // Update channel metadata with the current inquiry context
+
+    // Update channel metadata with current inquiry context
     try {
-      await channel.updatePartial({ set: channelData });
+      const updateData = { ...channelData };
+      delete updateData.members;
+      delete updateData.created_by_id;
+      await channel.updatePartial({ set: updateData });
     } catch (e) {
       console.warn("Channel partial update warning:", e.message);
+    }
+
+    // Sync Prisma conversation record
+    try {
+      const existingConv = await prisma.conversation.findFirst({
+        where: {
+          OR: [
+            { buyerId: req.user.id, sellerId: resolvedTargetUserId },
+            { buyerId: resolvedTargetUserId, sellerId: req.user.id },
+          ],
+        },
+      });
+
+      if (!existingConv) {
+        await prisma.conversation.create({
+          data: {
+            buyerId: req.user.id,
+            sellerId: resolvedTargetUserId,
+            landId: targetLand ? targetLand.id : null,
+            projectId: targetProject ? targetProject.id : null,
+          },
+        });
+      } else {
+        await prisma.conversation.update({
+          where: { id: existingConv.id },
+          data: {
+            lastMessageAt: new Date(),
+            ...(targetProject ? { projectId: targetProject.id } : {}),
+            ...(targetLand ? { landId: targetLand.id } : {}),
+          },
+        });
+      }
+    } catch (e) {
+      console.warn("Prisma conversation sync warning:", e.message);
     }
 
     if (initialMessage && initialMessage.trim()) {

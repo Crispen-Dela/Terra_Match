@@ -179,6 +179,8 @@ export function MessagesProvider({ children }) {
         ? {
             id: chan.data.projectId,
             title: chan.data.projectTitle || "Construction Project",
+            location: chan.data.projectLocation || null,
+            budgetRange: chan.data.projectBudget || null,
           }
         : null;
 
@@ -304,28 +306,36 @@ export function MessagesProvider({ children }) {
     [rawChannels]
   );
 
-  // Ensure conversation exists or resolve from URL contact parameter
+  // Ensure conversation exists or resolve from URL contact/project/land parameter
   const ensureConversation = useCallback(
-    (contactParam) => {
-      if (!contactParam) return null;
+    async (contactParam, { projectId, landId } = {}) => {
+      if (!contactParam && !projectId && !landId) return null;
 
       const directMatch = conversations.find(
-        (c) => c.id === contactParam || c.cid === contactParam || c.otherUserId === contactParam
+        (c) =>
+          (contactParam && (c.id === contactParam || c.cid === contactParam || c.otherUserId === contactParam)) ||
+          (projectId && c.projectContext?.id === projectId) ||
+          (landId && c.landContext?.id === landId)
       );
       if (directMatch) {
         setActiveChannelId(directMatch.id);
         return directMatch.id;
       }
 
-      startConversation({ targetSlug: contactParam })
-        .then((res) => {
-          if (res?.channelId) {
-            setActiveChannelId(res.channelId);
-          }
-        })
-        .catch((err) => {
-          console.warn("Could not automatically create channel for contact:", err.message);
+      try {
+        const res = await startConversation({
+          targetUserId: contactParam,
+          targetSlug: contactParam,
+          projectId,
+          landId,
         });
+        if (res?.channelId) {
+          setActiveChannelId(res.channelId);
+          return res.channelId;
+        }
+      } catch (err) {
+        console.warn("Could not automatically create channel for contact:", err.message);
+      }
 
       return contactParam;
     },
