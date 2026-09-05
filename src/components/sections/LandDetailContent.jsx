@@ -739,12 +739,14 @@ function BidPanel({
   const [showForm, setShowForm] = useState(false);
   const [amount, setAmount] = useState(String(minNextBid));
   const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [successMsg, setSuccessMsg] = useState("");
 
   useEffect(() => {
     setAmount(String(minNextBid));
   }, [minNextBid]);
 
-  function handleSubmit(e) {
+  async function handleSubmit(e) {
     e.preventDefault();
     if (isOwner) {
       setError("You cannot bid on your own land listing.");
@@ -755,19 +757,34 @@ function BidPanel({
       setError(`Enter at least ${formatGHS(minNextBid)}`);
       return;
     }
-    const result = onPlaceBid(value);
-    if (!result.ok) {
-      if (result.reason === "sold") {
-        setError("This item has already been sold and is no longer accepting bids.");
-      } else if (result.reason === "expired") {
-        setError("This auction has expired and is no longer accepting bids.");
-      } else {
-        setError(`Enter at least ${formatGHS(minNextBid)}`);
-      }
-      return;
-    }
+
+    setLoading(true);
     setError("");
-    setShowForm(false);
+    setSuccessMsg("");
+
+    try {
+      const result = await onPlaceBid(value);
+      if (!result.ok) {
+        if (result.reason === "sold") {
+          setError("This item has already been sold and is no longer accepting bids.");
+        } else if (result.reason === "expired") {
+          setError("This auction has expired and is no longer accepting bids.");
+        } else if (result.reason === "too-low") {
+          setError(`Enter at least ${formatGHS(minNextBid)}`);
+        } else if (result.reason === "owner") {
+          setError("You cannot bid on your own land listing.");
+        } else {
+          setError(result.error || "Failed to place bid. Please try again.");
+        }
+        return;
+      }
+      setSuccessMsg(`Your bid of ${formatGHS(value)} was placed successfully!`);
+      setShowForm(false);
+    } catch (err) {
+      setError(err.message || "An unexpected error occurred.");
+    } finally {
+      setLoading(false);
+    }
   }
 
   // If the signed-in user is the owner of this land listing
@@ -858,6 +875,13 @@ function BidPanel({
 
   return (
     <div className="rounded-2xl border border-ink-900/10 bg-white p-5">
+      {successMsg && (
+        <div className="mb-4 rounded-xl border border-emerald-200 bg-emerald-50/80 p-3 text-xs font-semibold text-emerald-800 flex items-center justify-between">
+          <span>{successMsg}</span>
+          <button type="button" onClick={() => setSuccessMsg("")} className="text-emerald-600 hover:text-emerald-900 ml-2 font-bold">×</button>
+        </div>
+      )}
+
       {land.buyNowPrice && (
         <div className="mb-4 rounded-xl border border-forest-200 bg-forest-50/60 p-4">
           <p className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-forest-700">
@@ -908,17 +932,19 @@ function BidPanel({
             step="1000"
             value={amount}
             onChange={(e) => setAmount(e.target.value)}
-            className="w-full rounded-lg border border-ink-900/15 px-3 py-2.5 text-sm font-semibold text-ink-900 focus:border-forest-500 focus:outline-none focus:ring-2 focus:ring-forest-500/20"
+            disabled={loading}
+            className="w-full rounded-lg border border-ink-900/15 px-3 py-2.5 text-sm font-semibold text-ink-900 focus:border-forest-500 focus:outline-none focus:ring-2 focus:ring-forest-500/20 disabled:bg-mist-100"
           />
-          {error && <p className="text-xs text-red-600">{error}</p>}
+          {error && <p className="text-xs font-semibold text-red-600">{error}</p>}
           <div className="flex gap-2">
-            <Button type="submit" variant="primary" size="md" className="flex-1">
-              Confirm Bid
+            <Button type="submit" variant="primary" size="md" className="flex-1" disabled={loading}>
+              {loading ? "Placing Bid..." : "Confirm Bid"}
             </Button>
             <Button
               type="button"
               variant="outline-dark"
               size="md"
+              disabled={loading}
               onClick={() => {
                 setShowForm(false);
                 setError("");
@@ -934,7 +960,11 @@ function BidPanel({
           variant="outline-dark"
           size="md"
           className="mt-4 w-full"
-          onClick={() => setShowForm(true)}
+          onClick={() => {
+            setShowForm(true);
+            setSuccessMsg("");
+            setError("");
+          }}
         >
           Place Bid
         </Button>
@@ -953,14 +983,16 @@ function BidPanel({
   );
 }
 
-function BidHistoryCard({ bidHistory }) {
+function BidHistoryCard({ bidHistory = [] }) {
   const [showAll, setShowAll] = useState(false);
   const visible = showAll ? bidHistory : bidHistory.slice(0, 5);
 
   return (
     <div className="rounded-2xl border border-ink-900/10 bg-white p-5">
       <div className="flex items-center justify-between">
-        <h3 className="text-sm font-bold text-ink-900">Bid History</h3>
+        <h3 className="text-sm font-bold text-ink-900">
+          Bid History {bidHistory.length > 0 && `(${bidHistory.length})`}
+        </h3>
         {bidHistory.length > 5 && (
           <button
             type="button"
@@ -971,18 +1003,49 @@ function BidHistoryCard({ bidHistory }) {
           </button>
         )}
       </div>
-      <ul className="mt-3 space-y-3">
-        {visible.map((bid, i) => (
-          <li key={`${bid.bidder}-${i}`} className="flex items-center gap-2.5">
-            <ImageSkeleton className="h-8 w-8 shrink-0 rounded-full" />
-            <div className="min-w-0 flex-1">
-              <p className="truncate text-xs font-semibold text-ink-900">{bid.bidder}</p>
-              <p className="text-[11px] text-ink-500">{bid.dateLabel}</p>
-            </div>
-            <p className="shrink-0 text-xs font-bold text-ink-900">{formatGHS(bid.amount)}</p>
-          </li>
-        ))}
-      </ul>
+
+      {bidHistory.length === 0 ? (
+        <p className="mt-3 text-xs text-ink-500 py-2">
+          No bids placed yet. Be the first to place a verified bid on this land!
+        </p>
+      ) : (
+        <ul className="mt-3 space-y-3">
+          {visible.map((bid, i) => (
+            <li key={bid.id || `${bid.bidder}-${i}`} className="flex items-center gap-2.5">
+              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-forest-100 text-xs font-bold text-forest-800">
+                {(bid.bidder || "B").charAt(0).toUpperCase()}
+              </span>
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-1.5">
+                  <p className="truncate text-xs font-semibold text-ink-900">{bid.bidder}</p>
+                  {bid.verified && (
+                    <span className="inline-flex items-center gap-0.5 rounded-full bg-forest-600 px-1.5 py-0.2 text-[9px] font-semibold text-white">
+                      Verified
+                    </span>
+                  )}
+                </div>
+                <p className="text-[11px] text-ink-500">{bid.dateLabel}</p>
+              </div>
+              <div className="text-right">
+                <p className="shrink-0 text-xs font-extrabold text-forest-700">{formatGHS(bid.amount)}</p>
+                {bid.status && bid.status !== "ACTIVE" && (
+                  <span
+                    className={cn(
+                      "text-[10px] font-bold uppercase",
+                      bid.status === "ACCEPTED" && "text-emerald-600",
+                      bid.status === "OUTBID" && "text-amber-600",
+                      bid.status === "REJECTED" && "text-rose-600",
+                      bid.status === "WITHDRAWN" && "text-ink-400"
+                    )}
+                  >
+                    {bid.status}
+                  </span>
+                )}
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   );
 }

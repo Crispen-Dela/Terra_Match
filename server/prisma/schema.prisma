@@ -66,9 +66,11 @@ enum ListingStatus {
 
 enum BidStatus {
   ACTIVE
+  PENDING
   ACCEPTED
   REJECTED
   OUTBID
+  WITHDRAWN
 }
 
 enum ProjectStatus {
@@ -212,10 +214,13 @@ model LandBid {
   amount    Float
   status    BidStatus @default(ACTIVE)
   createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt @default(now())
 
   @@index([landId])
   @@index([bidderId])
+  @@index([status])
   @@index([amount])
+  @@index([createdAt])
 }
 
 model ConstructionProject {

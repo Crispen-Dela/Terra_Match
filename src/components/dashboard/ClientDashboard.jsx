@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import DashboardHeader from "./DashboardHeader";
 import DashboardStatsCard from "./DashboardStatsCard";
@@ -7,6 +7,8 @@ import DashboardQuickActions from "./DashboardQuickActions";
 import PlanUpgradeModal from "./PlanUpgradeModal";
 import Button from "../common/Button";
 import { cn } from "../../utils/cn";
+import { bidApi } from "../../services/bidApi";
+import { subscribeToBidEvents } from "../../services/bidEvents";
 
 // Icons
 function GavelIcon({ className }) {
@@ -62,7 +64,37 @@ function ShieldCheckIcon({ className }) {
 
 export default function ClientDashboard({ data, onRefresh }) {
   const [showPlansModal, setShowPlansModal] = useState(false);
+  const [withdrawingBidId, setWithdrawingBidId] = useState(null);
+  const [actionError, setActionError] = useState("");
   const { user, plan, allPlans, verification, profileCompletion, stats, bids, projects, recommendedLands, recommendedContractors, activity } = data;
+
+  // Real-time SSE subscription for live bid updates
+  useEffect(() => {
+    const unsubscribe = subscribeToBidEvents(
+      (event) => {
+        if (event?.type === "BID_PLACED" || event?.type === "BID_STATUS_CHANGED") {
+          if (onRefresh) onRefresh();
+        }
+      },
+      { userId: user?.id }
+    );
+    return () => unsubscribe();
+  }, [user?.id, onRefresh]);
+
+  const handleWithdrawBid = async (bidId) => {
+    if (!window.confirm("Are you sure you want to withdraw this bid?")) return;
+    setWithdrawingBidId(bidId);
+    setActionError("");
+    try {
+      await bidApi.updateStatus(bidId, "WITHDRAWN");
+      if (onRefresh) await onRefresh();
+    } catch (err) {
+      console.error("Failed to withdraw bid:", err);
+      setActionError(err.message || "Failed to withdraw bid.");
+    } finally {
+      setWithdrawingBidId(null);
+    }
+  };
 
   const quickActions = [
     { label: "Explore Land", subtitle: "Browse titled parcels", icon: MapPinIcon, to: "/explore-land", featured: true },
@@ -128,6 +160,12 @@ export default function ClientDashboard({ data, onRefresh }) {
               </Button>
             </div>
 
+            {actionError && (
+              <div className="mt-3 rounded-xl bg-rose-50 p-3 text-xs font-semibold text-rose-700 border border-rose-200">
+                {actionError}
+              </div>
+            )}
+
             {bids?.all?.length === 0 ? (
               <div className="rounded-xl border border-dashed border-ink-900/15 bg-mist-50/50 p-8 my-4 text-center">
                 <p className="text-sm font-semibold text-ink-800">You haven't placed any land bids yet</p>
@@ -143,7 +181,14 @@ export default function ClientDashboard({ data, onRefresh }) {
                 {bids.all.map((b) => (
                   <div key={b.id} className="flex flex-col gap-2.5 py-3.5 sm:flex-row sm:items-center sm:justify-between">
                     <div className="min-w-0 flex-1">
-                      <h3 className="truncate font-bold text-ink-900">{b.land?.title}</h3>
+                      <div className="flex items-center gap-2">
+                        <h3 className="truncate font-bold text-ink-900">{b.land?.title}</h3>
+                        {b.createdAt && (
+                          <span className="text-[10px] text-ink-400">
+                            • {new Date(b.createdAt).toLocaleDateString()}
+                          </span>
+                        )}
+                      </div>
                       <p className="mt-0.5 truncate text-xs text-ink-600">
                         {b.land?.district}, {b.land?.region} {b.land?.owner?.name ? `• Owner: ${b.land.owner.name}` : ""}
                       </p>
@@ -158,17 +203,32 @@ export default function ClientDashboard({ data, onRefresh }) {
                       </div>
                     </div>
 
-                    <div className="flex shrink-0 items-center gap-2">
+                    <div className="flex shrink-0 flex-wrap items-center gap-2">
                       <span
                         className={cn(
                           "shrink-0 whitespace-nowrap rounded-md px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider",
                           b.status === "ACTIVE" && "bg-emerald-100 text-emerald-800",
                           b.status === "OUTBID" && "bg-amber-100 text-amber-800",
-                          b.status === "ACCEPTED" && "bg-forest-100 text-forest-800"
+                          b.status === "ACCEPTED" && "bg-forest-100 text-forest-800",
+                          b.status === "REJECTED" && "bg-rose-100 text-rose-800",
+                          b.status === "WITHDRAWN" && "bg-slate-100 text-slate-600",
+                          b.status === "PENDING" && "bg-blue-100 text-blue-800"
                         )}
                       >
                         {b.status}
                       </span>
+
+                      {b.status === "ACTIVE" && (
+                        <button
+                          type="button"
+                          disabled={withdrawingBidId === b.id}
+                          onClick={() => handleWithdrawBid(b.id)}
+                          className="text-[11px] font-semibold text-rose-600 hover:text-rose-800 px-2 py-1"
+                        >
+                          {withdrawingBidId === b.id ? "..." : "Withdraw"}
+                        </button>
+                      )}
+
                       <Button
                         as={Link}
                         to={`/messages?contact=${encodeURIComponent(b.land?.owner?.id || b.land?.ownerId || "")}&land=${encodeURIComponent(b.land?.id || b.landId || "")}`}

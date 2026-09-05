@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import DashboardHeader from "./DashboardHeader";
 import DashboardStatsCard from "./DashboardStatsCard";
@@ -6,6 +6,8 @@ import DashboardQuickActions from "./DashboardQuickActions";
 import PlanUpgradeModal from "./PlanUpgradeModal";
 import Button from "../common/Button";
 import { cn } from "../../utils/cn";
+import { bidApi } from "../../services/bidApi";
+import { subscribeToBidEvents } from "../../services/bidEvents";
 import {
   Home,
   Map,
@@ -73,13 +75,43 @@ export default function LandOwnerDashboard({ data, onRefresh }) {
     },
   ];
 
+  const [actionLoadingId, setActionLoadingId] = useState(null);
+  const [actionError, setActionError] = useState("");
+
+  // Live SSE real-time listener for incoming bids and bid updates
+  useEffect(() => {
+    const unsubscribe = subscribeToBidEvents(
+      (event) => {
+        if (event?.type === "BID_PLACED" || event?.type === "BID_STATUS_CHANGED") {
+          if (onRefresh) onRefresh();
+        }
+      },
+      { userId: user?.id }
+    );
+    return () => unsubscribe();
+  }, [user?.id, onRefresh]);
+
+  const handleUpdateBidStatus = async (bidId, newStatus) => {
+    setActionLoadingId(bidId);
+    setActionError("");
+    try {
+      await bidApi.updateStatus(bidId, newStatus);
+      if (onRefresh) await onRefresh();
+    } catch (err) {
+      console.error(`Failed to update bid to ${newStatus}:`, err);
+      setActionError(err.message || `Failed to update bid status to ${newStatus}.`);
+    } finally {
+      setActionLoadingId(null);
+    }
+  };
+
   // Default bid offers matching screenshot if backend bids array is empty
   const displayedBids =
     bidsReceived?.all && bidsReceived.all.length > 0
       ? bidsReceived.all
       : [
           {
-            id: 1,
+            id: "mock-1",
             landId: "east-legon-hills",
             landTitle: "East Legon Hills",
             bidder: { id: "kofi.addo@gmail.com", name: "Kofi Addo", phone: "+233 50 112 2334" },
@@ -88,7 +120,7 @@ export default function LandOwnerDashboard({ data, onRefresh }) {
             status: "ACTIVE",
           },
           {
-            id: 2,
+            id: "mock-2",
             landId: "east-legon-hills",
             landTitle: "East Legon Hills",
             bidder: { id: "abena.mensah@gmail.com", name: "Abena Mensah", phone: "+233 24 556 7890" },
@@ -165,6 +197,12 @@ export default function LandOwnerDashboard({ data, onRefresh }) {
               </span>
             </div>
 
+            {actionError && (
+              <div className="mt-3 rounded-xl bg-rose-50 p-3 text-xs font-semibold text-rose-700 border border-rose-200">
+                {actionError}
+              </div>
+            )}
+
             <div className="mt-2 divide-y divide-slate-100">
               {displayedBids.map((b, idx) => (
                 <div
@@ -172,9 +210,16 @@ export default function LandOwnerDashboard({ data, onRefresh }) {
                   className="flex flex-col gap-2 py-4 sm:flex-row sm:items-center sm:justify-between"
                 >
                   <div className="min-w-0 flex-1">
-                    <h3 className="truncate font-extrabold text-slate-900 text-sm">{b.landTitle}</h3>
+                    <div className="flex items-center gap-2">
+                      <h3 className="truncate font-extrabold text-slate-900 text-sm">{b.landTitle}</h3>
+                      {b.createdAt && (
+                        <span className="text-[10px] text-slate-400">
+                          • {new Date(b.createdAt).toLocaleDateString()}
+                        </span>
+                      )}
+                    </div>
                     <p className="mt-0.5 truncate text-xs text-slate-600">
-                      Bidder: <span className="font-semibold text-slate-800">{b.bidder?.name}</span>{" "}
+                      Bidder: <span className="font-semibold text-slate-800">{b.bidder?.name || "Verified Buyer"}</span>{" "}
                       {b.bidder?.phone ? `• ${b.bidder.phone}` : ""}
                     </p>
                     <div className="mt-1 flex flex-wrap items-center gap-2 text-xs">
@@ -189,16 +234,52 @@ export default function LandOwnerDashboard({ data, onRefresh }) {
                     </div>
                   </div>
 
-                  <div className="flex shrink-0 items-center gap-2">
-                    <span className="rounded-md bg-emerald-100 px-2.5 py-1 text-[10px] font-extrabold uppercase tracking-wider text-emerald-800">
+                  <div className="flex shrink-0 flex-wrap items-center gap-2">
+                    <span
+                      className={cn(
+                        "rounded-md px-2.5 py-1 text-[10px] font-extrabold uppercase tracking-wider",
+                        b.status === "ACTIVE" && "bg-emerald-100 text-emerald-800",
+                        b.status === "ACCEPTED" && "bg-forest-100 text-forest-800",
+                        b.status === "REJECTED" && "bg-rose-100 text-rose-800",
+                        b.status === "OUTBID" && "bg-amber-100 text-amber-800",
+                        b.status === "WITHDRAWN" && "bg-slate-100 text-slate-600"
+                      )}
+                    >
                       {b.status || "ACTIVE"}
                     </span>
+
+                    {/* Accept / Reject actions for active or pending real bids */}
+                    {b.id && !String(b.id).startsWith("mock-") && (b.status === "ACTIVE" || b.status === "PENDING") && (
+                      <>
+                        <Button
+                          type="button"
+                          variant="primary"
+                          size="xs"
+                          disabled={actionLoadingId === b.id}
+                          onClick={() => handleUpdateBidStatus(b.id, "ACCEPTED")}
+                          className="bg-[#059669] hover:bg-[#047857] text-white text-[11px] font-bold px-2.5 py-1"
+                        >
+                          {actionLoadingId === b.id ? "..." : "Accept"}
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="secondary"
+                          size="xs"
+                          disabled={actionLoadingId === b.id}
+                          onClick={() => handleUpdateBidStatus(b.id, "REJECTED")}
+                          className="text-[11px] font-bold text-rose-700 hover:bg-rose-50 px-2.5 py-1"
+                        >
+                          Reject
+                        </Button>
+                      </>
+                    )}
+
                     <Button
                       as={Link}
                       to={`/messages?contact=${encodeURIComponent(b.bidder?.id || b.bidderId || "")}&land=${encodeURIComponent(b.landId || b.land?.id || "")}`}
                       variant="ghost"
                       size="xs"
-                      className="rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold px-3.5 py-1.5"
+                      className="rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold px-3 py-1.5"
                     >
                       Chat
                     </Button>
