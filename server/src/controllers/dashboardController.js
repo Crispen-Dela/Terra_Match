@@ -405,6 +405,7 @@ export async function getDashboardData(req, res, next) {
       const allBidsReceived = lands.flatMap((l) =>
         l.bids.map((b) => ({
           ...b,
+          landId: l.id,
           landTitle: l.title,
           landSlug: l.slug,
           landCategory: l.category,

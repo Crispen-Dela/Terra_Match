@@ -169,6 +169,14 @@ export default function ClientDashboard({ data, onRefresh }) {
                       >
                         {b.status}
                       </span>
+                      <Button
+                        as={Link}
+                        to={`/messages?contact=${encodeURIComponent(b.land?.owner?.id || b.land?.ownerId || "")}&land=${encodeURIComponent(b.land?.id || b.landId || "")}`}
+                        variant="ghost"
+                        size="xs"
+                      >
+                        Chat
+                      </Button>
                       <Button as={Link} to={`/explore-land/${b.land?.slug || b.land?.id}`} variant="secondary" size="xs">
                         {b.status === "OUTBID" ? "Raise Bid" : "View Land"}
                       </Button>

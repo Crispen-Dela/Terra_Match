@@ -51,7 +51,7 @@ const FAQ_CATEGORIES = [
       },
       {
         q: "Can I message a contractor before hiring them?",
-        a: "Yes — every contractor profile has a Message Now button that opens a direct conversation, so you can ask questions before committing to anything.",
+        a: "Yes — every contractor profile has a Chat Now button that opens a direct conversation, so you can ask questions before committing to anything.",
       },
     ],
   },

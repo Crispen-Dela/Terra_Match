@@ -438,7 +438,7 @@ function ContactCard({ owner, slug }) {
       </Link>
 
       <Button as={Link} to={messageHref} variant="primary" size="md" className="mt-4 w-full">
-        Message Now
+        Chat Now
       </Button>
     </div>
   );

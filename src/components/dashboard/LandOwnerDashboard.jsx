@@ -193,12 +193,12 @@ export default function LandOwnerDashboard({ data, onRefresh }) {
                     </span>
                     <Button
                       as={Link}
-                      to={`/messages?contact=${encodeURIComponent(b.bidder?.id || b.bidderId || "")}&land=${encodeURIComponent(b.landId || "")}`}
+                      to={`/messages?contact=${encodeURIComponent(b.bidder?.id || b.bidderId || "")}&land=${encodeURIComponent(b.landId || b.land?.id || "")}`}
                       variant="ghost"
                       size="xs"
                       className="rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold px-3.5 py-1.5"
                     >
-                      Message
+                      Chat
                     </Button>
                   </div>
                 </div>
