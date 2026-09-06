@@ -53,11 +53,11 @@ function MapView({ validLands, defaultCenter, setSelectedLand }) {
           land.price ||
           (land.totalPrice ? `GH₵${land.totalPrice.toLocaleString()}` : "Price on request");
         const landName = land.name || land.title || "Land Plot";
-        const landLocation = land.location || land.address || "Greater Accra";
+        const rawLandImage = land.image || (land.images && land.images[0]) || "";
         const landImage =
-          land.image ||
-          (land.images && land.images[0]) ||
-          "https://images.unsplash.com/photo-1500382017468-9049fed747ef?w=400";
+          rawLandImage && !rawLandImage.startsWith("blob:")
+            ? rawLandImage
+            : "https://images.unsplash.com/photo-1500382017468-9049fed747ef?w=400";
         const landSlug = land.slug || land.id || "";
 
         return (
@@ -74,6 +74,10 @@ function MapView({ validLands, defaultCenter, setSelectedLand }) {
                 <img
                   src={landImage}
                   alt={landName}
+                  onError={(e) => {
+                    e.currentTarget.onerror = null;
+                    e.currentTarget.src = "https://images.unsplash.com/photo-1500382017468-9049fed747ef?w=400";
+                  }}
                   className="h-24 w-full rounded-md object-cover mb-2"
                 />
                 <h4 className="font-bold text-xs text-ink-900">{landName}</h4>

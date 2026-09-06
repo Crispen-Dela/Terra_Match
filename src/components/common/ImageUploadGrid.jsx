@@ -1,5 +1,6 @@
-import { useRef } from "react";
+import { useState, useRef } from "react";
 import { cn } from "../../utils/cn";
+import { processImageFiles } from "../../utils/imageUpload";
 
 function UploadCloudIcon({ className }) {
   return (
@@ -33,35 +34,44 @@ function StarBadgeIcon({ className }) {
 
 /**
  * Multi-image upload control with live previews, used by both Post a
- * Project and List Your Land. Images are read client-side into object
- * URLs (this project has no upload endpoint/storage backend — see
- * ListingsContext.jsx) — the first image is marked "Cover" to match
- * how every listing card elsewhere in the app shows one primary photo.
+ * Project, List Your Land, and ID verification. Images are compressed and
+ * stored as persistent Base64 Data URLs so they save and display
+ * reliably across page refreshes, backend syncs, and devices.
  *
- * `value` is an array of { id, file, url }. Parent owns the state so
- * it can be included in the submitted record.
+ * `value` is an array of { id, file, url } or strings. Parent owns the state.
  */
-export default function ImageUploadGrid({ value, onChange, maxImages = 8, label = "Photos" }) {
+export default function ImageUploadGrid({ value = [], onChange, maxImages = 8, label = "Photos" }) {
   const inputRef = useRef(null);
+  const [isProcessing, setIsProcessing] = useState(false);
 
-  function handleFiles(fileList) {
-    const incoming = Array.from(fileList).filter((f) => f.type.startsWith("image/"));
-    const room = maxImages - value.length;
-    const accepted = incoming.slice(0, Math.max(0, room));
+  // Normalize items in case value contains raw string URLs
+  const normalizedItems = (value || []).map((item, idx) => {
+    if (typeof item === "string") {
+      return { id: `img-str-${idx}`, url: item };
+    }
+    return item;
+  });
 
-    const next = accepted.map((file) => ({
-      id: `${file.name}-${file.lastModified}-${Math.random().toString(36).slice(2, 6)}`,
-      file,
-      url: URL.createObjectURL(file),
-    }));
-
-    if (next.length) onChange([...value, ...next]);
+  async function handleFiles(fileList) {
+    if (!fileList || fileList.length === 0) return;
+    setIsProcessing(true);
+    try {
+      const next = await processImageFiles(fileList, {
+        maxImages,
+        existingCount: normalizedItems.length,
+      });
+      if (next.length > 0) {
+        onChange([...normalizedItems, ...next]);
+      }
+    } catch (err) {
+      console.error("Error uploading/processing photos:", err);
+    } finally {
+      setIsProcessing(false);
+    }
   }
 
   function handleRemove(id) {
-    const target = value.find((img) => img.id === id);
-    if (target) URL.revokeObjectURL(target.url);
-    onChange(value.filter((img) => img.id !== id));
+    onChange(normalizedItems.filter((img) => img.id !== id));
   }
 
   function handleDrop(e) {
@@ -79,9 +89,9 @@ export default function ImageUploadGrid({ value, onChange, maxImages = 8, label 
       </div>
 
       <div className="mt-2 grid grid-cols-3 gap-3 sm:grid-cols-4">
-        {value.map((img, i) => (
+        {normalizedItems.map((img, i) => (
           <div
-            key={img.id}
+            key={img.id || i}
             className="group relative aspect-square overflow-hidden rounded-lg border border-ink-900/10 bg-mist-100"
           >
             <img src={img.url} alt="" className="h-full w-full object-cover" />
@@ -102,7 +112,17 @@ export default function ImageUploadGrid({ value, onChange, maxImages = 8, label 
           </div>
         ))}
 
-        {value.length < maxImages && (
+        {isProcessing && (
+          <div className="flex aspect-square flex-col items-center justify-center gap-1.5 rounded-lg border border-forest-300 bg-forest-50/50 text-forest-700">
+            <svg className="h-6 w-6 animate-spin text-forest-600" viewBox="0 0 24 24" fill="none">
+              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" />
+              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
+            </svg>
+            <span className="text-[11px] font-medium">Processing...</span>
+          </div>
+        )}
+
+        {!isProcessing && normalizedItems.length < maxImages && (
           <button
             type="button"
             onClick={() => inputRef.current?.click()}

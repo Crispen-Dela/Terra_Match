@@ -228,6 +228,7 @@ export default function PostProjectForm() {
   }
 
   function buildRecord(status) {
+    const serializedImages = images.map((img) => (typeof img === "string" ? img : img?.url || "")).filter(Boolean);
     return {
       title: formData.title.trim(),
       category: formData.category,
@@ -235,8 +236,9 @@ export default function PostProjectForm() {
       budgetRange: formData.budgetRange,
       timeline: formData.timeline,
       location: formData.location.trim(),
-      imageCount: images.length,
-      coverImageUrl: images[0]?.url ?? null,
+      imageCount: serializedImages.length,
+      coverImageUrl: serializedImages[0] || null,
+      images: serializedImages,
       attachmentCount: attachments.length,
       status,
     };
@@ -251,6 +253,7 @@ export default function PostProjectForm() {
 
     setSubmitState("submitting");
     try {
+      const serializedImages = images.map((img) => (typeof img === "string" ? img : img?.url || "")).filter(Boolean);
       const payload = {
         title: formData.title.trim(),
         category: formData.category,
@@ -258,7 +261,8 @@ export default function PostProjectForm() {
         budgetRange: formData.budgetRange,
         timeline: formData.timeline,
         location: formData.location.trim(),
-        images: images.map((img) => (typeof img === "string" ? img : img.url || "")),
+        images: serializedImages,
+        coverImageUrl: serializedImages[0] || null,
         attachments: attachments.map((a) => (typeof a === "string" ? a : a.name || "")),
       };
 

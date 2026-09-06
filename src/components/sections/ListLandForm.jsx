@@ -180,34 +180,14 @@ export default function ListLandForm() {
       titleDocRef: formData.titleDocRef.trim(),
       amenities,
       imageCount: images.length,
-      coverImageUrl: images[0]?.url ?? null,
+      coverImageUrl: (typeof images[0] === "string" ? images[0] : images[0]?.url) || null,
+      images: images.map((img) => (typeof img === "string" ? img : img?.url || "")).filter(Boolean),
       status,
     };
   }
 
-  /**
-   * The backend's CreateLandRequest (see services/landApi.js) only has
-   * columns for title/description/locationData/floodRisk/price — none
-   * of category, region, district, address, coordinates, landSize,
-   * buyNowPrice, ownershipType, titleDocRef, amenities, or photos have
-   * a real column to go into. Rather than silently dropping them (the
-   * master integration brief is explicit that frontend fields the
-   * backend doesn't support must not be discarded quietly), everything
-   * this form collects beyond the four real fields is JSON-encoded into
-   * locationData, which the backend already stores as an opaque string
-   * ("JSON string for GIS data" per LandListing.java's own comment) and
-   * returns back unchanged. It's genuinely persisted in Postgres this
-   * way — just not queryable/filterable by the backend the way a real
-   * column would be. See FRONTEND_INTEGRATION_NOTES.md "Known gaps"
-   * for what adding real columns for these would take.
-   *
-   * `floodRisk` isn't collected by this form at all (there's no field
-   * for it), so it's sent as null — the backend's `floodRisk` column is
-   * a plain String with no NOT NULL constraint, so this doesn't fail
-   * the request, but it does mean every listing created here has no
-   * flood-risk data despite LandListing having a column for it.
-   */
   function buildLocationDataPayload() {
+    const serializedImages = images.map((img) => (typeof img === "string" ? img : img?.url || "")).filter(Boolean);
     return JSON.stringify({
       category: formData.category,
       region: formData.region,
@@ -220,8 +200,9 @@ export default function ListLandForm() {
       ownershipType: formData.ownershipType,
       titleDocRef: formData.titleDocRef.trim(),
       amenities,
-      imageCount: images.length,
-      coverImageUrl: images[0]?.url ?? null,
+      imageCount: serializedImages.length,
+      coverImageUrl: serializedImages[0] || null,
+      images: serializedImages,
     });
   }
 
@@ -231,9 +212,12 @@ export default function ListLandForm() {
 
     setSubmitState("submitting");
     try {
+      const serializedImages = images.map((img) => (typeof img === "string" ? img : img?.url || "")).filter(Boolean);
       const created = await landApi.create({
         title: formData.title.trim(),
         description: formData.description.trim(),
+        location: `${formData.district.trim() ? formData.district.trim() + ", " : ""}${formData.region}`,
+        locationData: buildLocationDataPayload(),
         category: formData.category,
         region: formData.region,
         district: formData.district.trim(),
@@ -247,7 +231,7 @@ export default function ListLandForm() {
         ownershipType: formData.ownershipType,
         titleDocRef: formData.titleDocRef.trim(),
         amenities,
-        images: images.map((img) => (typeof img === "string" ? img : img.url || "https://images.unsplash.com/photo-1500382017468-9049fed747ef?w=800&auto=format&fit=crop&q=80")),
+        images: serializedImages.length > 0 ? serializedImages : ["https://images.unsplash.com/photo-1500382017468-9049fed747ef?w=800&auto=format&fit=crop&q=80"],
       });
 
       const localRecord = addLandListing({ ...buildRecord("published"), id: created.id, slug: created.slug }, "published");

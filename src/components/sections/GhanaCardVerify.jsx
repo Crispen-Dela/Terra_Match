@@ -160,8 +160,8 @@ export default function GhanaCardVerify() {
     setIsSubmitting(true);
     try {
       let cardPhotoUrl = null;
-      if (cardPhoto.length > 0 && typeof cardPhoto[0] === "string") {
-        cardPhotoUrl = cardPhoto[0];
+      if (cardPhoto.length > 0) {
+        cardPhotoUrl = typeof cardPhoto[0] === "string" ? cardPhoto[0] : cardPhoto[0]?.url || null;
       }
 
       await verifyGhanaCard({

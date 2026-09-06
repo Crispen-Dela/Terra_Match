@@ -332,7 +332,11 @@ function Gallery({ land, detail, sold }) {
         <img
           key={photos[active]}
           src={photos[active]}
-          alt={`${land.name} — photo ${active + 1} of ${photos.length}`}
+          alt={`${land.name || land.title || "Land"} — photo ${active + 1} of ${photos.length}`}
+          onError={(e) => {
+            e.currentTarget.onerror = null;
+            e.currentTarget.src = unsplashUrl(LAND_PHOTO_IDS.greenCoveredLand);
+          }}
           className="aspect-[16/10] w-full bg-mist-100 object-cover"
         />
       </div>
@@ -357,6 +361,10 @@ function Gallery({ land, detail, sold }) {
                   alt=""
                   aria-hidden="true"
                   loading="lazy"
+                  onError={(e) => {
+                    e.currentTarget.onerror = null;
+                    e.currentTarget.src = unsplashUrl(LAND_PHOTO_IDS.greenCoveredLand);
+                  }}
                   className="h-full w-full object-cover"
                 />
               </button>

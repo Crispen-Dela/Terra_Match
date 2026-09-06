@@ -11,9 +11,13 @@ export default function ContractorCard({ contractor, reviewsLabel = "" }) {
     <div className="group overflow-hidden rounded-2xl border border-ink-900/5 bg-white shadow-sm transition-all duration-300 hover:shadow-card">
       <div className="relative aspect-[4/3] overflow-hidden bg-mist-100">
         <img
-          src={image}
+          src={image && !image.startsWith("blob:") ? image : "https://images.unsplash.com/photo-1541888946425-d81bb19240f5?w=600"}
           alt={name}
           loading="lazy"
+          onError={(e) => {
+            e.currentTarget.onerror = null;
+            e.currentTarget.src = "https://images.unsplash.com/photo-1541888946425-d81bb19240f5?w=600";
+          }}
           className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
         />
         <div className="absolute left-3 top-3 flex items-center gap-1 rounded-full bg-navy-900/80 px-2.5 py-1 text-[10px] font-bold text-white shadow-sm backdrop-blur-md border border-white/10">

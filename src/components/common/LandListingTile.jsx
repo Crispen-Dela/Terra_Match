@@ -19,7 +19,8 @@ export default function LandListingTile(props) {
   const location = land.location || land.address || "Greater Accra, Ghana";
   const price = land.price || (land.totalPrice ? `GH₵${land.totalPrice.toLocaleString()}` : "Price on request");
   const bids = land.bids ?? land.bidsCount ?? 0;
-  const image = land.image || (land.images && land.images[0]) || "https://images.unsplash.com/photo-1500382017468-9049fed747ef?w=600";
+  const rawImage = land.image || (land.images && land.images[0]) || "";
+  const image = (rawImage && !rawImage.startsWith("blob:")) ? rawImage : "https://images.unsplash.com/photo-1500382017468-9049fed747ef?w=600";
   const slug = land.slug || land.id || "";
 
   const isOwner = Boolean(
@@ -70,6 +71,10 @@ export default function LandListingTile(props) {
           src={image}
           alt={name}
           loading="lazy"
+          onError={(e) => {
+            e.currentTarget.onerror = null;
+            e.currentTarget.src = "https://images.unsplash.com/photo-1500382017468-9049fed747ef?w=600";
+          }}
           className={cn("aspect-[4/3] w-full bg-mist-100 object-cover", (sold || expired) && "opacity-70")}
         />
       </div>

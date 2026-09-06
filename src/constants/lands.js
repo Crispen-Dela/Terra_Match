@@ -1,4 +1,4 @@
-import { unsplashUrl, LAND_PHOTO_IDS, CONTRACTOR_PHOTO_IDS } from "./stockImages";
+import { unsplashUrl, LAND_PHOTO_IDS, CONTRACTOR_PHOTO_IDS } from "./stockImages.js";
 
 // Category filter pills on the Explore Land page.
 export const LAND_CATEGORIES = [
@@ -155,15 +155,31 @@ export const LAND_GALLERIES = {
 export function getLandGallery(land) {
   if (!land) return [unsplashUrl(LAND_PHOTO_IDS.greenCoveredLand)];
   if (Array.isArray(land.images) && land.images.length > 0) {
-    return land.images.map((img) => (typeof img === "string" ? img : img.url || unsplashUrl(LAND_PHOTO_IDS.greenCoveredLand)));
+    const validImages = land.images
+      .map((img) => (typeof img === "string" ? img : img?.url || ""))
+      .filter((url) => Boolean(url && typeof url === "string" && url.trim().length > 0))
+      .map((url) => {
+        if (url.startsWith("blob:")) {
+          return unsplashUrl(LAND_PHOTO_IDS.greenCoveredLand);
+        }
+        return url;
+      });
+    if (validImages.length > 0) return validImages;
   }
   if (land.slug && LAND_GALLERIES[land.slug]) {
     return LAND_GALLERIES[land.slug];
   }
-  if (land.image) {
+  if (land.image && typeof land.image === "string") {
+    if (land.image.startsWith("blob:")) {
+      return [unsplashUrl(LAND_PHOTO_IDS.greenCoveredLand)];
+    }
     return [land.image];
   }
-  return [unsplashUrl(LAND_PHOTO_IDS.greenCoveredLand)];
+  return [
+    unsplashUrl(LAND_PHOTO_IDS.greenCoveredLand),
+    unsplashUrl(LAND_PHOTO_IDS.greenPlainField),
+    unsplashUrl(LAND_PHOTO_IDS.largeAreaOfLand),
+  ];
 }
 
 // Derived option lists for the search/filter dropdowns.

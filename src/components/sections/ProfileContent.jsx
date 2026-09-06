@@ -5,6 +5,7 @@ import { useAuth } from "../../context/AuthContext";
 import { cn } from "../../utils/cn";
 import { contractorApi } from "../../services/contractorApi";
 import { uploadApi } from "../../services/authApi";
+import { compressAndEncodeImage } from "../../utils/imageUpload";
 
 function PersonIcon({ className }) {
   return (
@@ -227,11 +228,15 @@ export default function ProfileContent() {
     }
   }, [role]);
 
-  function handleFileChange(e) {
+  async function handleFileChange(e) {
     const file = e.target.files?.[0];
     if (file) {
-      const url = URL.createObjectURL(file);
-      setAvatarPreview(url);
+      try {
+        const dataUrl = await compressAndEncodeImage(file, { maxWidth: 512, maxHeight: 512, quality: 0.85 });
+        setAvatarPreview(dataUrl);
+      } catch (err) {
+        console.error("Avatar compression error:", err);
+      }
     }
   }
 
@@ -251,6 +256,7 @@ export default function ProfileContent() {
       await updateProfile({
         name: formData.fullName,
         phone: formData.phone,
+        avatarUrl: avatarPreview,
       });
 
       if (role === "contractor") {
@@ -284,8 +290,13 @@ export default function ProfileContent() {
 
     setNewProject((prev) => ({ ...prev, uploading: true }));
     try {
-      const res = await uploadApi.uploadFile(newProject.file);
-      const imageUrl = res.url;
+      let imageUrl = "";
+      try {
+        const res = await uploadApi.uploadFile(newProject.file);
+        imageUrl = res.url;
+      } catch {
+        imageUrl = await compressAndEncodeImage(newProject.file, { maxWidth: 1200, maxHeight: 900 });
+      }
       setPortfolio((prev) => [
         ...prev,
         {
