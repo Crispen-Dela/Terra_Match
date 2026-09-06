@@ -149,3 +149,44 @@ export function LifeBuoyIcon({ className }) {
     </svg>
   );
 }
+
+export function Trash2Icon({ className }) {
+  return (
+    <svg viewBox="0 0 24 24" className={cn("fill-none stroke-current", className)} aria-hidden="true">
+      <polyline points="3 6 5 6 21 6" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+      <line x1="10" y1="11" x2="10" y2="17" strokeWidth="1.6" strokeLinecap="round" />
+      <line x1="14" y1="11" x2="14" y2="17" strokeWidth="1.6" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+export function DollarSignIcon({ className }) {
+  return (
+    <svg viewBox="0 0 24 24" className={cn("fill-none stroke-current", className)} aria-hidden="true">
+      <line x1="12" y1="1" x2="12" y2="23" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+export function UserXIcon({ className }) {
+  return (
+    <svg viewBox="0 0 24 24" className={cn("fill-none stroke-current", className)} aria-hidden="true">
+      <path d="M16 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+      <circle cx="8.5" cy="7" r="4" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+      <line x1="18" y1="8" x2="23" y2="13" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+      <line x1="23" y1="8" x2="18" y2="13" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+export function UserCheckIcon({ className }) {
+  return (
+    <svg viewBox="0 0 24 24" className={cn("fill-none stroke-current", className)} aria-hidden="true">
+      <path d="M16 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+      <circle cx="8.5" cy="7" r="4" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+      <polyline points="17 11 19 13 23 9" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}

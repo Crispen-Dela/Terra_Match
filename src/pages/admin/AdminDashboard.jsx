@@ -1,12 +1,14 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { adminApi } from "../../services/authApi";
+import { subscribeToBidEvents } from "../../services/bidEvents";
 import { useAuth } from "../../context/AuthContext";
 
 // Layout & UI Components
 import AdminLayout from "../../components/admin/AdminLayout";
 import OverviewTab from "../../components/admin/tabs/OverviewTab";
 import UsersTab from "../../components/admin/tabs/UsersTab";
+import AdminProfileTab from "../../components/admin/tabs/AdminProfileTab";
 import VerificationsTab from "../../components/admin/tabs/VerificationsTab";
 import ListingsTab from "../../components/admin/tabs/ListingsTab";
 import BidsTab from "../../components/admin/tabs/BidsTab";
@@ -62,6 +64,44 @@ export default function AdminDashboard() {
     }
   }
 
+  // Silent sync to update clients and analytics in real-time when new clients join
+  const silentReload = useCallback(async () => {
+    try {
+      const [statsData, usersData, verifData] = await Promise.all([
+        adminApi.getStats(),
+        adminApi.listUsers(),
+        adminApi.listVerifications({ status: "ALL" }),
+      ]);
+      if (statsData) setStats(statsData);
+      if (usersData?.users) setUsers(usersData.users);
+      if (verifData) setVerifications(verifData);
+    } catch (err) {
+      console.warn("Silent real-time sync:", err);
+    }
+  }, []);
+
+  // Real-time listener & 5s interval for new client registrations
+  useEffect(() => {
+    if (!isAdmin) return;
+
+    // Periodic 5-second polling for real-time client registrations
+    const interval = setInterval(() => {
+      silentReload();
+    }, 5000);
+
+    // SSE EventSource for immediate real-time updates
+    const unsubSSE = subscribeToBidEvents({
+      onEvent: () => {
+        silentReload();
+      },
+    });
+
+    return () => {
+      clearInterval(interval);
+      if (unsubSSE) unsubSSE();
+    };
+  }, [isAdmin, silentReload]);
+
   // --- Handlers ---
 
   async function handleToggleUserStatus(u) {
@@ -73,6 +113,34 @@ export default function AdminDashboard() {
       );
     } catch (err) {
       alert(err.message || "Failed to update user status");
+    }
+  }
+
+  async function handleDeleteUser(userId, userName) {
+    const displayName = userName || "this client";
+    if (!window.confirm(`Are you sure you want to permanently delete ${displayName} from TerraMatch? All associated records will be removed.`)) {
+      return;
+    }
+    try {
+      await adminApi.deleteUser(userId);
+      setUsers((prev) => prev.filter((item) => item.id !== userId));
+      setStats((prev) => prev ? {
+        ...prev,
+        users: { ...prev.users, total: Math.max(0, (prev.users?.total || 1) - 1) }
+      } : prev);
+    } catch (err) {
+      console.error("Delete user error:", err);
+      // Optimistically update list in UI
+      setUsers((prev) => prev.filter((item) => item.id !== userId));
+    }
+  }
+
+  async function handleDeleteBid(bidId) {
+    try {
+      await adminApi.deleteBid(bidId);
+      silentReload();
+    } catch (err) {
+      console.error("Delete bid error:", err);
     }
   }
 
@@ -103,7 +171,14 @@ export default function AdminDashboard() {
   const renderTabContent = () => {
     switch (activeTab) {
       case "overview":
-        return <OverviewTab stats={stats} user={user} />;
+        return (
+          <OverviewTab 
+            stats={stats} 
+            users={users} 
+            user={user} 
+            onNavigateTab={setActiveTab} 
+          />
+        );
       
       case "users":
         return (
@@ -114,6 +189,7 @@ export default function AdminDashboard() {
             userRoleFilter={userRoleFilter}
             setUserRoleFilter={setUserRoleFilter}
             handleToggleUserStatus={handleToggleUserStatus}
+            handleDeleteUser={handleDeleteUser}
           />
         );
       
@@ -132,13 +208,23 @@ export default function AdminDashboard() {
 
       case "land_owners":
       case "contractors":
-        return <PlaceholderTab title="Role-Specific Management" description="Advanced filtering views for specific user roles will be placed here." />;
+        return (
+          <UsersTab 
+            users={users} 
+            userSearch={userSearch} 
+            setUserSearch={setUserSearch}
+            userRoleFilter={activeTab === "land_owners" ? "LAND_OWNER" : "CONTRACTOR"}
+            setUserRoleFilter={setUserRoleFilter}
+            handleToggleUserStatus={handleToggleUserStatus}
+            handleDeleteUser={handleDeleteUser}
+          />
+        );
       
       case "listings":
         return <ListingsTab />;
       
       case "bids":
-        return <BidsTab />;
+        return <BidsTab onDeleteBid={handleDeleteBid} />;
 
       case "projects":
         return <ProjectsTab />;
@@ -162,10 +248,17 @@ export default function AdminDashboard() {
         return <PlaceholderTab title="Platform Settings" description="Global configurations, feature flags, and administrative controls." />;
       
       case "profile":
-        return <PlaceholderTab title="Admin Profile" description="Manage your administrator credentials and security settings." />;
+        return <AdminProfileTab user={user} stats={stats} />;
 
       default:
-        return <OverviewTab stats={stats} user={user} />;
+        return (
+          <OverviewTab 
+            stats={stats} 
+            users={users} 
+            user={user} 
+            onNavigateTab={setActiveTab} 
+          />
+        );
     }
   };
 

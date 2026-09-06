@@ -12,7 +12,7 @@ export default function AdminLayout({ user, activeTab, setActiveTab, onLogout, c
       <div className="flex flex-1 flex-col overflow-hidden">
         
         {/* Top Header */}
-        <AdminHeader user={user} />
+        <AdminHeader user={user} onOpenProfile={() => setActiveTab("profile")} />
         
         {/* Scrollable Content */}
         <main className="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8 scrollbar-thin scrollbar-thumb-slate-700 scrollbar-track-transparent">

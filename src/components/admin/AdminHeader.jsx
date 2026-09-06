@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { SearchIcon, BellIcon } from "./AdminIcons";
 import { adminApi } from "../../services/authApi";
 
-export default function AdminHeader({ user }) {
+export default function AdminHeader({ user, onOpenProfile }) {
   const [notifications, setNotifications] = useState([]);
   const [showDropdown, setShowDropdown] = useState(false);
   const dropdownRef = useRef(null);
@@ -109,17 +109,25 @@ export default function AdminHeader({ user }) {
 
         <div className="h-6 w-px bg-slate-800" />
 
-        <div className="flex items-center gap-3">
+        {/* Clickable Admin Profile Button */}
+        <button
+          onClick={onOpenProfile}
+          title="Open Admin Profile & Revenue Analytics"
+          className="group flex items-center gap-3 rounded-xl p-1.5 pr-2.5 text-left hover:bg-slate-800/70 border border-transparent hover:border-slate-700 transition-all cursor-pointer focus:outline-none focus:ring-2 focus:ring-emerald-500/40"
+        >
           <div className="hidden text-right sm:block">
-            <p className="text-sm font-medium text-slate-200 leading-tight">
+            <p className="text-sm font-medium text-slate-200 leading-tight group-hover:text-emerald-400 transition-colors">
               {user?.name || "Admin"}
             </p>
-            <p className="text-xs text-slate-500">Administrator</p>
+            <p className="text-[11px] text-slate-500 group-hover:text-slate-400">View Profile & Revenue</p>
           </div>
-          <div className="flex h-8 w-8 items-center justify-center rounded-full bg-emerald-900 border border-emerald-700 text-emerald-400 font-bold text-xs shadow-inner">
-            {user?.name ? user.name[0].toUpperCase() : "A"}
+          <div className="relative">
+            <div className="flex h-9 w-9 items-center justify-center rounded-full bg-emerald-900 border border-emerald-500/80 text-emerald-300 font-bold text-sm shadow-inner group-hover:scale-105 group-hover:border-emerald-400 transition-all">
+              {user?.name ? user.name[0].toUpperCase() : "A"}
+            </div>
+            <span className="absolute bottom-0 right-0 h-2.5 w-2.5 rounded-full bg-emerald-500 ring-2 ring-[#111827]" />
           </div>
-        </div>
+        </button>
       </div>
     </header>
   );

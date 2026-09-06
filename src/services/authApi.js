@@ -40,6 +40,7 @@ export const adminApi = {
   },
   updateUserStatus: (userId, data) =>
     api.put(`/api/admin/users/${userId}/status`, data),
+  deleteUser: (userId) => api.delete(`/api/admin/users/${userId}`),
   listVerifications: (params) => {
     const q = new URLSearchParams(params || {}).toString();
     return api.get(`/api/admin/verifications${q ? `?${q}` : ""}`);
@@ -48,12 +49,15 @@ export const adminApi = {
     api.post(`/api/admin/verifications/${id}/review`, { action, rejectionReason }),
   updateLandStatus: (id, status) =>
     api.put(`/api/admin/lands/${id}/status`, { status }),
+  deleteLand: (id) => api.delete(`/api/admin/lands/${id}`),
   listLands: (params) => {
     const q = new URLSearchParams(params || {}).toString();
     return api.get(`/api/admin/lands${q ? `?${q}` : ""}`);
   },
   listBids: () => api.get("/api/admin/bids"),
+  deleteBid: (id) => api.delete(`/api/admin/bids/${id}`),
   listProjects: () => api.get("/api/admin/projects"),
+  deleteProject: (id) => api.delete(`/api/admin/projects/${id}`),
   listAuditLogs: () => api.get("/api/admin/logs"),
   
   listChats: () => api.get("/api/admin/chats"),
