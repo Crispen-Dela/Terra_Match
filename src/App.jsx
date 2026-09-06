@@ -97,7 +97,12 @@ export default function App() {
     return <LoadingScreen />;
   }
 
-  if (isAuthed && AUTH_ONLY_ROUTES.includes(pathname)) {
+  // Admin routing protection: an authenticated admin stays in the Admin Portal
+  if (isAuthed && (role === "ADMIN" || isAdmin)) {
+    if (AUTH_ONLY_ROUTES.includes(pathname) || pathname === "/dashboard" || pathname === "/admin/login") {
+      return <Navigate to="/admin" replace />;
+    }
+  } else if (isAuthed && AUTH_ONLY_ROUTES.includes(pathname)) {
     return <Navigate to="/dashboard" replace />;
   }
 

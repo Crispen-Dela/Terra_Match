@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback } from "react";
+import { Navigate } from "react-router-dom";
 import ContractorDashboard from "../dashboard/ContractorDashboard";
 import LandOwnerDashboard from "../dashboard/LandOwnerDashboard";
 import ClientDashboard from "../dashboard/ClientDashboard";
@@ -9,10 +10,14 @@ import { dashboardApi } from "../../services/dashboardApi";
 import { useAuth } from "../../context/AuthContext";
 
 export default function DashboardHome() {
-  const { user: authUser } = useAuth();
+  const { user: authUser, isAdmin } = useAuth();
   const [dashboardData, setDashboardData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+
+  if (isAdmin || authUser?.role === "ADMIN") {
+    return <Navigate to="/admin" replace />;
+  }
 
   const fetchDashboard = useCallback(async () => {
     setLoading(true);

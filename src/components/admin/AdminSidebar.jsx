@@ -45,13 +45,22 @@ export default function AdminSidebar({ activeTab, setActiveTab, onLogout }) {
   return (
     <aside className="hidden lg:flex w-[250px] flex-col bg-[#111827] border-r border-slate-800">
       {/* Brand */}
-      <div className="flex h-16 shrink-0 items-center gap-3 px-6 border-b border-slate-800/50">
+      <div 
+        onClick={() => setActiveTab("overview")}
+        className="flex h-16 shrink-0 items-center gap-3 px-6 border-b border-slate-800/50 cursor-pointer hover:bg-slate-800/20 transition-colors"
+        title="Admin Overview Dashboard"
+      >
         <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-600 text-white font-bold shadow-md shadow-emerald-900/20 text-xs">
           TM
         </span>
-        <span className="text-[15px] font-bold text-white tracking-wide">
-          TerraMatch
-        </span>
+        <div className="flex flex-col">
+          <span className="text-[15px] font-bold text-white tracking-wide leading-tight">
+            TerraMatch
+          </span>
+          <span className="text-[10px] font-bold text-emerald-400 uppercase tracking-wider">
+            Admin Portal
+          </span>
+        </div>
       </div>
 
       {/* Navigation */}
@@ -69,9 +78,9 @@ export default function AdminSidebar({ activeTab, setActiveTab, onLogout }) {
                   key={item.id}
                   onClick={() => setActiveTab(item.id)}
                   className={cn(
-                    "flex w-full items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors",
+                    "flex w-full items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors cursor-pointer",
                     isActive
-                      ? "bg-emerald-600/10 text-emerald-500"
+                      ? "bg-emerald-600/10 text-emerald-500 font-semibold"
                       : "text-slate-400 hover:bg-slate-800/50 hover:text-slate-200"
                   )}
                 >
@@ -95,9 +104,9 @@ export default function AdminSidebar({ activeTab, setActiveTab, onLogout }) {
                   key={item.id}
                   onClick={() => setActiveTab(item.id)}
                   className={cn(
-                    "flex w-full items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors",
+                    "flex w-full items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors cursor-pointer",
                     isActive
-                      ? "bg-emerald-600/10 text-emerald-500"
+                      ? "bg-emerald-600/10 text-emerald-500 font-semibold"
                       : "text-slate-400 hover:bg-slate-800/50 hover:text-slate-200"
                   )}
                 >
@@ -109,25 +118,13 @@ export default function AdminSidebar({ activeTab, setActiveTab, onLogout }) {
             
             {/* Divider */}
             <div className="h-px bg-slate-800 my-4 mx-3" />
-            
-            <Link
-              to="/"
-              className="flex w-full items-center gap-3 rounded-md px-3 py-2 text-sm font-medium text-slate-400 hover:bg-slate-800/50 hover:text-slate-200 transition-colors"
-            >
-              <svg viewBox="0 0 24 24" className="h-4 w-4 shrink-0 text-slate-500" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
-                <circle cx="12" cy="12" r="10" />
-                <path d="M12 2a15.3 15.3 0 014 10 15.3 15.3 0 01-4 10 15.3 15.3 0 01-4-10 15.3 15.3 0 014-10z" />
-                <path d="M2 12h20" />
-              </svg>
-              Go to Main Site
-            </Link>
 
             <button
               onClick={onLogout}
-              className="flex w-full items-center gap-3 rounded-md px-3 py-2 text-sm font-medium text-slate-400 hover:bg-red-500/10 hover:text-red-400 transition-colors mt-2"
+              className="flex w-full items-center gap-3 rounded-md px-3 py-2 text-sm font-medium text-slate-400 hover:bg-red-500/10 hover:text-red-400 transition-colors cursor-pointer"
             >
-              <LogOutIcon className="h-4 w-4 shrink-0 text-slate-500 group-hover:text-red-400" />
-              Logout
+              <LogOutIcon className="h-4 w-4 shrink-0 text-slate-500" />
+              Sign Out
             </button>
           </nav>
         </div>

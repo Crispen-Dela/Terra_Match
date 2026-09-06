@@ -1,18 +1,42 @@
 import { DollarSignIcon, ShieldCheckIcon, UsersIcon, GavelIcon, MapIcon, BuildingIcon } from "../AdminIcons";
 
-export default function AdminProfileTab({ user, stats }) {
+export default function AdminProfileTab({ user, stats, onBack }) {
   const adminEmail = user?.email || "admin@terramatch.com";
   const adminName = user?.name || "Super Administrator";
   const totalRevenueDisplay = stats?.revenue?.totalFormatted || "GH₵ 1,485,000";
 
   return (
     <div className="space-y-6 animate-in fade-in duration-500">
-      {/* Header */}
-      <div className="mb-2">
-        <h2 className="text-xl font-bold text-slate-100 tracking-tight">Admin Profile & Platform Revenue</h2>
-        <p className="text-sm text-slate-400 mt-1">
-          Administrator account credentials and live financial revenue analytics for TerraMatch.
-        </p>
+      {/* Header with Back Navigation */}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-2">
+        <div className="flex items-center gap-3">
+          {onBack && (
+            <button
+              onClick={onBack}
+              className="flex h-9 w-9 items-center justify-center rounded-xl border border-slate-800 bg-[#111827] text-slate-400 hover:border-slate-700 hover:bg-slate-800 hover:text-emerald-400 transition-all shadow-sm shrink-0"
+              title="Return to Admin Dashboard Overview"
+            >
+              <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+              </svg>
+            </button>
+          )}
+          <div>
+            <h2 className="text-xl font-bold text-slate-100 tracking-tight">Admin Profile & Platform Revenue</h2>
+            <p className="text-sm text-slate-400 mt-0.5">
+              Administrator account credentials and live financial revenue analytics for TerraMatch.
+            </p>
+          </div>
+        </div>
+
+        {onBack && (
+          <button
+            onClick={onBack}
+            className="inline-flex items-center gap-2 rounded-lg border border-slate-800 bg-slate-900/60 px-3.5 py-1.5 text-xs font-semibold text-slate-300 hover:bg-slate-800 hover:text-emerald-400 hover:border-emerald-500/30 transition-all self-start sm:self-auto cursor-pointer"
+          >
+            <span>&larr; Back to Admin Overview</span>
+          </button>
+        )}
       </div>
 
       {/* Admin Identity & Gmail Card */}

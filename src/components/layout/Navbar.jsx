@@ -76,13 +76,18 @@ export default function Navbar({ authed = false }) {
         {authed ? (
           <div className="hidden items-center gap-4 lg:flex">
             <Link
-              to="/dashboard"
-              className="text-[15px] font-medium text-ink-700 transition-colors hover:text-ink-900"
+              to={user?.role === "ADMIN" ? "/admin" : "/dashboard"}
+              className={cn(
+                "text-[15px] font-medium transition-colors",
+                user?.role === "ADMIN"
+                  ? "text-emerald-700 font-bold bg-emerald-50 px-2.5 py-1 rounded-lg border border-emerald-200 hover:bg-emerald-100"
+                  : "text-ink-700 hover:text-ink-900"
+              )}
             >
-              Dashboard
+              {user?.role === "ADMIN" ? "Admin Portal" : "Dashboard"}
             </Link>
             <NotificationPopover />
-            <Link to="/profile" aria-label="Your profile">
+            <Link to={user?.role === "ADMIN" ? "/admin" : "/profile"} aria-label={user?.role === "ADMIN" ? "Admin Portal" : "Your profile"}>
               <ProfileAvatar className="h-9 w-9 rounded-full object-cover" />
             </Link>
           </div>
@@ -161,38 +166,43 @@ export default function Navbar({ authed = false }) {
           {authed ? (
             <>
               <Link
-                to="/dashboard"
+                to={user?.role === "ADMIN" ? "/admin" : "/dashboard"}
                 onClick={() => setIsMenuOpen(false)}
-                className="mt-2 rounded-lg px-2 py-2.5 text-[15px] font-medium text-ink-700 hover:bg-mist-100"
+                className={cn(
+                  "mt-2 rounded-lg px-2 py-2.5 text-[15px] font-medium",
+                  user?.role === "ADMIN" ? "text-emerald-700 font-bold bg-emerald-50" : "text-ink-700 hover:bg-mist-100"
+                )}
               >
-                Dashboard
+                {user?.role === "ADMIN" ? "Admin Portal" : "Dashboard"}
               </Link>
+              {user?.role !== "ADMIN" && (
+                <Link
+                  to="/messages"
+                  onClick={() => setIsMenuOpen(false)}
+                  className="flex items-center justify-between rounded-lg px-2 py-2.5 text-[15px] font-medium text-ink-700 hover:bg-mist-100"
+                >
+                  <span className="flex items-center gap-2">
+                    <svg viewBox="0 0 24 24" className="h-5 w-5 fill-none stroke-current text-ink-600" aria-hidden="true">
+                      <path
+                        d="M18 8a6 6 0 10-12 0c0 7-3 9-3 9h18s-3-2-3-9"
+                        strokeWidth="1.8"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      />
+                      <path d="M13.7 21a2 2 0 01-3.4 0" strokeWidth="1.8" strokeLinecap="round" />
+                    </svg>
+                    Messages
+                  </span>
+                  <span className="h-2 w-2 rounded-full bg-red-500" />
+                </Link>
+              )}
               <Link
-                to="/messages"
-                onClick={() => setIsMenuOpen(false)}
-                className="flex items-center justify-between rounded-lg px-2 py-2.5 text-[15px] font-medium text-ink-700 hover:bg-mist-100"
-              >
-                <span className="flex items-center gap-2">
-                  <svg viewBox="0 0 24 24" className="h-5 w-5 fill-none stroke-current text-ink-600" aria-hidden="true">
-                    <path
-                      d="M18 8a6 6 0 10-12 0c0 7-3 9-3 9h18s-3-2-3-9"
-                      strokeWidth="1.8"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                    />
-                    <path d="M13.7 21a2 2 0 01-3.4 0" strokeWidth="1.8" strokeLinecap="round" />
-                  </svg>
-                  Messages
-                </span>
-                <span className="h-2 w-2 rounded-full bg-red-500" />
-              </Link>
-              <Link
-                to="/profile"
+                to={user?.role === "ADMIN" ? "/admin" : "/profile"}
                 onClick={() => setIsMenuOpen(false)}
                 className="flex items-center gap-2 rounded-lg px-2 py-2 text-[15px] font-medium text-ink-700 hover:bg-mist-100"
               >
                 <ProfileAvatar className="h-8 w-8 rounded-full object-cover" />
-                Your profile
+                {user?.role === "ADMIN" ? "Admin Portal" : "Your profile"}
               </Link>
             </>
           ) : (

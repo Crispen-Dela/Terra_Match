@@ -248,7 +248,7 @@ export default function AdminDashboard() {
         return <PlaceholderTab title="Platform Settings" description="Global configurations, feature flags, and administrative controls." />;
       
       case "profile":
-        return <AdminProfileTab user={user} stats={stats} />;
+        return <AdminProfileTab user={user} stats={stats} onBack={() => setActiveTab("overview")} />;
 
       default:
         return (
