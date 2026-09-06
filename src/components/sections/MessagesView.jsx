@@ -135,7 +135,8 @@ export default function MessagesView() {
       (c) =>
         c.id === selectedId ||
         c.cid === selectedId ||
-        (contactId && (c.otherUserId === contactId || c.id === contactId || c.cid === contactId)) ||
+        (selectedId === "support" && c.isSupport) ||
+        (contactId && (c.otherUserId === contactId || c.id === contactId || c.cid === contactId || (contactId === "support" && c.isSupport))) ||
         (!contactId && projectId && c.projectContext?.id === projectId) ||
         (!contactId && landId && c.landContext?.id === landId)
     ) || (conversations.length > 0 && !contactId && !projectId && !landId ? conversations[0] : null);
@@ -154,7 +155,7 @@ export default function MessagesView() {
 
   async function handleSend(e) {
     e.preventDefault();
-    const activeId = selected?.id || selectedId;
+    const activeId = selected?.id || selectedId || (selected?.isSupport ? "support" : null);
     if (!activeId || !draft.trim()) return;
     const text = draft.trim();
     setDraft("");

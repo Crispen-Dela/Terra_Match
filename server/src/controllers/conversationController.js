@@ -153,8 +153,8 @@ export async function listConversations(req, res, next) {
       include: {
         land: true,
         project: true,
-        buyer: { select: { id: true, name: true, avatarUrl: true } },
-        seller: { select: { id: true, name: true, avatarUrl: true } },
+        buyer: { select: { id: true, name: true, email: true, avatarUrl: true, role: true } },
+        seller: { select: { id: true, name: true, email: true, avatarUrl: true, role: true } },
         messages: {
           orderBy: { createdAt: "desc" },
           take: 1,
@@ -170,11 +170,12 @@ export async function listConversations(req, res, next) {
       const otherParty = c.buyerId === req.user.id ? c.seller : c.buyer;
       if (!otherParty) continue;
 
-      if (!conversationsByParty.has(otherParty.id)) {
-        conversationsByParty.set(otherParty.id, c);
+      const key = `${otherParty.id}_${c.landId || "none"}_${c.projectId || "none"}`;
+      if (!conversationsByParty.has(key)) {
+        conversationsByParty.set(key, c);
       } else {
         // Merge duplicate thread: move messages to primary conversation and delete duplicate thread
-        const primary = conversationsByParty.get(otherParty.id);
+        const primary = conversationsByParty.get(key);
         try {
           await prisma.message.updateMany({
             where: { conversationId: c.id },
@@ -202,6 +203,10 @@ export async function listConversations(req, res, next) {
         });
 
         const otherParty = c.buyerId === req.user.id ? c.seller : c.buyer;
+        const isSupport =
+          otherParty?.role === "ADMIN" ||
+          (c.landId == null && c.projectId == null && (c.buyer?.role === "ADMIN" || c.seller?.role === "ADMIN"));
+
         const lastMsg = await prisma.message.findFirst({
           where: { conversationId: c.id },
           orderBy: { createdAt: "desc" },
@@ -210,9 +215,13 @@ export async function listConversations(req, res, next) {
         return {
           id: c.id,
           landId: c.landId,
-          landTitle: c.land ? c.land.title : c.project ? c.project.title : null,
-          otherPartyId: otherParty.id,
-          otherPartyName: otherParty.name,
+          landTitle: c.land ? c.land.title : c.project ? c.project.title : isSupport ? "Support Inquiry" : null,
+          isSupport: Boolean(isSupport),
+          type: isSupport ? "SUPPORT" : "DIRECT",
+          otherPartyId: isSupport ? "support" : otherParty.id,
+          otherPartyName: isSupport ? "Support (Admin)" : otherParty.name,
+          otherPartyRole: isSupport ? "ADMIN" : otherParty.role,
+          otherPartyAvatarUrl: otherParty.avatarUrl,
           lastMessageText: lastMsg ? lastMsg.body : "",
           lastMessageAt: lastMsg ? lastMsg.createdAt : c.lastMessageAt,
           unreadCount,
@@ -230,16 +239,20 @@ export async function getConversation(req, res, next) {
   try {
     const { id } = req.params;
 
+    if (id === "support") {
+      return getSupportConversation(req, res, next);
+    }
+
     const conversation = await prisma.conversation.findUnique({
       where: { id },
       include: {
         land: true,
         project: true,
-        buyer: { select: { id: true, name: true, avatarUrl: true } },
-        seller: { select: { id: true, name: true, avatarUrl: true } },
+        buyer: { select: { id: true, name: true, email: true, avatarUrl: true, role: true } },
+        seller: { select: { id: true, name: true, email: true, avatarUrl: true, role: true } },
         messages: {
           orderBy: { createdAt: "asc" },
-          include: { sender: { select: { id: true, name: true } } },
+          include: { sender: { select: { id: true, name: true, role: true } } },
         },
       },
     });
@@ -271,14 +284,24 @@ export async function getConversation(req, res, next) {
 export async function sendMessage(req, res, next) {
   try {
     const { id } = req.params;
-    const { body } = req.body;
+    const { body, message: altMessage } = req.body;
+    const textToSend = (body || altMessage || "").trim();
 
-    if (!body || !body.trim()) {
+    if (!textToSend) {
       throw new AppError("Message body is required.", 400);
+    }
+
+    if (id === "support") {
+      req.body.message = textToSend;
+      return sendSupportMessage(req, res, next);
     }
 
     const conversation = await prisma.conversation.findUnique({
       where: { id },
+      include: {
+        buyer: { select: { id: true, name: true, role: true } },
+        seller: { select: { id: true, name: true, role: true } },
+      },
     });
 
     if (!conversation) {
@@ -289,11 +312,20 @@ export async function sendMessage(req, res, next) {
       throw new AppError("Access denied.", 403);
     }
 
+    const otherParty = conversation.buyerId === req.user.id ? conversation.seller : conversation.buyer;
+    const isSupport =
+      otherParty?.role === "ADMIN" ||
+      (conversation.landId == null && conversation.projectId == null && (conversation.buyer?.role === "ADMIN" || conversation.seller?.role === "ADMIN"));
+
     const message = await prisma.message.create({
       data: {
         conversationId: id,
         senderId: req.user.id,
-        body: body.trim(),
+        body: textToSend,
+        isRead: false,
+      },
+      include: {
+        sender: { select: { id: true, name: true, role: true } },
       },
     });
 
@@ -302,47 +334,49 @@ export async function sendMessage(req, res, next) {
       data: { lastMessageAt: new Date() },
     });
 
-    res.status(201).json(message);
-  } catch (error) {
-    next(error);
-  }
-}
+    // Stream Chat sync
+    if (streamServerClient) {
+      try {
+        const channelId = isSupport ? `support_${req.user.role === "ADMIN" ? otherParty.id : req.user.id}` : undefined;
+        if (channelId) {
+          const channel = streamServerClient.channel("messaging", channelId);
+          await channel.sendMessage({
+            text: textToSend,
+            user_id: req.user.id,
+          });
+        }
+      } catch (streamErr) {
+        console.warn("Stream sync warning:", streamErr.message);
+      }
+    }
 
-export async function getUnreadCount(req, res, next) {
-  try {
-    const unreadCount = await prisma.message.count({
-      where: {
-        conversation: {
-          OR: [{ buyerId: req.user.id }, { sellerId: req.user.id }],
-        },
-        senderId: { not: req.user.id },
-        isRead: false,
-      },
+    // If message is sent from user to Admin in a Support conversation, broadcast SSE
+    if (isSupport && req.user.role !== "ADMIN") {
+      bidEvents.broadcast({
+        type: "SUPPORT_MESSAGE_RECEIVED",
+        conversationId: conversation.id,
+        userId: req.user.id,
+        userName: req.user.name,
+        userEmail: req.user.email,
+        userRole: req.user.role,
+        message: textToSend,
+        timestamp: new Date().toISOString(),
+      });
+    }
+
+    res.status(201).json({
+      id: message.id,
+      senderId: message.senderId,
+      sender: "me",
+      senderName: "You",
+      body: message.body,
+      text: message.body,
+      isRead: message.isRead,
+      createdAt: message.createdAt,
     });
-
-    res.json({ unreadCount });
   } catch (error) {
     next(error);
   }
-}
-
-function formatConversationDetail(c, currentUserId) {
-  const otherParty = c.buyerId === currentUserId ? c.seller : c.buyer;
-  return {
-    id: c.id,
-    landId: c.landId,
-    landTitle: c.land?.title || c.project?.title || null,
-    otherPartyId: otherParty?.id || null,
-    otherPartyName: otherParty?.name || "User",
-    messages: (c.messages || []).map((m) => ({
-      id: m.id,
-      senderId: m.senderId,
-      senderName: m.sender?.name || "",
-      body: m.body,
-      isRead: m.isRead,
-      createdAt: m.createdAt,
-    })),
-  };
 }
 
 // ==========================================
@@ -351,16 +385,24 @@ function formatConversationDetail(c, currentUserId) {
 
 export async function getSupportConversation(req, res, next) {
   try {
-    const admin = await prisma.user.findFirst({
-      where: { role: "ADMIN" },
-      select: { id: true, name: true, email: true, role: true, avatarUrl: true },
-    });
+    const admin =
+      (await prisma.user.findFirst({
+        where: { role: "ADMIN", id: { not: req.user.id } },
+        select: { id: true, name: true, email: true, role: true, avatarUrl: true },
+      })) ||
+      (await prisma.user.findFirst({
+        where: { role: "ADMIN" },
+        select: { id: true, name: true, email: true, role: true, avatarUrl: true },
+      }));
 
     if (!admin) {
       return res.json({
-        id: null,
+        id: "support",
         isSupport: true,
+        type: "SUPPORT",
+        otherPartyId: "support",
         otherPartyName: "Support (Admin)",
+        otherPartyRole: "ADMIN",
         messages: [],
       });
     }
@@ -375,6 +417,8 @@ export async function getSupportConversation(req, res, next) {
         projectId: null,
       },
       include: {
+        buyer: { select: { id: true, name: true, email: true, avatarUrl: true, role: true } },
+        seller: { select: { id: true, name: true, email: true, avatarUrl: true, role: true } },
         messages: {
           orderBy: { createdAt: "asc" },
           include: {
@@ -388,7 +432,10 @@ export async function getSupportConversation(req, res, next) {
       return res.json({
         id: null,
         isSupport: true,
+        type: "SUPPORT",
+        otherPartyId: "support",
         otherPartyName: "Support (Admin)",
+        otherPartyRole: "ADMIN",
         messages: [],
       });
     }
@@ -403,22 +450,7 @@ export async function getSupportConversation(req, res, next) {
       data: { isRead: true },
     });
 
-    return res.json({
-      id: conversation.id,
-      isSupport: true,
-      otherPartyId: admin.id,
-      otherPartyName: "Support (Admin)",
-      messages: (conversation.messages || []).map((m) => ({
-        id: m.id,
-        senderId: m.senderId,
-        senderName: m.senderId === req.user.id ? req.user.name : "Support (Admin)",
-        isAdmin: m.senderId === admin.id,
-        body: m.body,
-        message: m.body,
-        isRead: m.isRead,
-        createdAt: m.createdAt,
-      })),
-    });
+    return res.json(formatConversationDetail(conversation, req.user.id));
   } catch (error) {
     next(error);
   }
@@ -542,6 +574,24 @@ export async function sendSupportMessage(req, res, next) {
       conversationId: conversation.id,
       channelId,
     });
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function getUnreadCount(req, res, next) {
+  try {
+    const unreadCount = await prisma.message.count({
+      where: {
+        conversation: {
+          OR: [{ buyerId: req.user.id }, { sellerId: req.user.id }],
+        },
+        senderId: { not: req.user.id },
+        isRead: false,
+      },
+    });
+
+    res.json({ unreadCount });
   } catch (error) {
     next(error);
   }

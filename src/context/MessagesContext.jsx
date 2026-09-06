@@ -2,6 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState, u
 import { StreamChat } from "stream-chat";
 import { chatApi } from "../services/chatApi";
 import { supportApi } from "../services/authApi";
+import { messageApi } from "../services/messageApi";
 import { useAuth } from "./AuthContext";
 import { formatGHS } from "../constants/landDetails";
 
@@ -38,13 +39,96 @@ export function MessagesProvider({ children }) {
   const { user, isAuthed } = useAuth();
   const [client, setClient] = useState(null);
   const [rawChannels, setRawChannels] = useState([]);
+  const [dbConversations, setDbConversations] = useState([]);
+  const [conversationMessagesMap, setConversationMessagesMap] = useState({});
   const [activeChannelId, setActiveChannelId] = useState(null);
   const [connecting, setConnecting] = useState(false);
   const [updateTick, setUpdateTick] = useState(0);
 
   const clientRef = useRef(null);
 
-  // Initialize and connect Stream Chat client when user logs in
+  // 1. Fetch persistent conversations from backend PostgreSQL database
+  const refreshDbConversations = useCallback(async () => {
+    if (!isAuthed || !user) {
+      setDbConversations([]);
+      return;
+    }
+
+    try {
+      const [listRes, supportRes] = await Promise.allSettled([
+        messageApi.list(),
+        supportApi.getConversation(),
+      ]);
+
+      const list = listRes.status === "fulfilled" && Array.isArray(listRes.value) ? listRes.value : [];
+      const supportData = supportRes.status === "fulfilled" ? supportRes.value : null;
+
+      const unifiedList = [...list];
+
+      // If support conversation exists with messages or ID and isn't already in list, include it
+      if (supportData && (supportData.id || (supportData.messages && supportData.messages.length > 0))) {
+        const hasSupportInList = unifiedList.some(
+          (c) => c.isSupport || c.id === supportData.id || c.type === "SUPPORT"
+        );
+        if (!hasSupportInList) {
+          const lastMsg = supportData.messages && supportData.messages[supportData.messages.length - 1];
+          unifiedList.unshift({
+            id: supportData.id || "support",
+            landId: null,
+            landTitle: "Support Inquiry",
+            isSupport: true,
+            type: "SUPPORT",
+            otherPartyId: "support",
+            otherPartyName: "Support (Admin)",
+            otherPartyRole: "ADMIN",
+            lastMessageText: lastMsg ? lastMsg.body || lastMsg.message || lastMsg.text : "Support inquiry",
+            lastMessageAt: lastMsg ? lastMsg.createdAt : new Date().toISOString(),
+            unreadCount: 0,
+          });
+        }
+
+        // Cache messages for support conversation
+        if (supportData.messages && supportData.messages.length > 0) {
+          const targetKey = supportData.id || "support";
+          setConversationMessagesMap((prev) => ({
+            ...prev,
+            [targetKey]: supportData.messages.map((m) => ({
+              id: m.id,
+              senderId: m.senderId,
+              sender: m.sender === "me" || m.senderId === user.id ? "me" : "them",
+              senderName: m.senderId === user.id ? "You" : "Support (Admin)",
+              isAdmin: m.isAdmin || m.senderId !== user.id,
+              text: m.body || m.message || m.text,
+              body: m.body || m.message || m.text,
+              time: formatMessageTime(m.createdAt),
+              createdAt: m.createdAt,
+            })),
+            support: supportData.messages.map((m) => ({
+              id: m.id,
+              senderId: m.senderId,
+              sender: m.sender === "me" || m.senderId === user.id ? "me" : "them",
+              senderName: m.senderId === user.id ? "You" : "Support (Admin)",
+              isAdmin: m.isAdmin || m.senderId !== user.id,
+              text: m.body || m.message || m.text,
+              body: m.body || m.message || m.text,
+              time: formatMessageTime(m.createdAt),
+              createdAt: m.createdAt,
+            })),
+          }));
+        }
+      }
+
+      setDbConversations(unifiedList);
+    } catch (err) {
+      console.warn("Could not fetch DB conversations:", err.message);
+    }
+  }, [isAuthed, user]);
+
+  useEffect(() => {
+    refreshDbConversations();
+  }, [refreshDbConversations, updateTick]);
+
+  // 2. Initialize and connect Stream Chat client in parallel
   useEffect(() => {
     let isMounted = true;
 
@@ -66,7 +150,7 @@ export function MessagesProvider({ children }) {
 
       try {
         setConnecting(true);
-        const { apiKey, token, user: streamUserData } = await chatApi.getToken();
+        const { apiKey, token } = await chatApi.getToken();
         if (!isMounted) return;
 
         // Disconnect existing client if connected to a different user
@@ -115,6 +199,7 @@ export function MessagesProvider({ children }) {
         const handleEvent = (event) => {
           if (!isMounted) return;
           setUpdateTick((t) => t + 1);
+          refreshDbConversations();
           if (event.type === "notification.added_to_channel" || event.type === "channel.updated") {
             streamClient.queryChannels(filter, sort, { watch: true, state: true }).then((chans) => {
               if (isMounted) setRawChannels(chans);
@@ -128,7 +213,7 @@ export function MessagesProvider({ children }) {
         streamClient.on("notification.mark_read", handleEvent);
         streamClient.on("channel.updated", handleEvent);
       } catch (err) {
-        console.error("Stream Chat initialization error:", err);
+        console.warn("Stream Chat initialization warning (using DB fallback):", err.message);
       } finally {
         if (isMounted) setConnecting(false);
       }
@@ -139,19 +224,175 @@ export function MessagesProvider({ children }) {
     return () => {
       isMounted = false;
     };
-  }, [isAuthed, user?.id]);
+  }, [isAuthed, user?.id, refreshDbConversations]);
 
-  // Transform Stream channels into the TerraMatch UI model, strictly deduplicated by otherUserId
+  // 3. Real-time SSE listener for admin replies and updates
+  useEffect(() => {
+    if (!isAuthed || !user) return;
+
+    let eventSource = null;
+    try {
+      const sseUrl = `${import.meta.env.VITE_API_URL || ""}/api/bids/stream`;
+      eventSource = new EventSource(sseUrl);
+      eventSource.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          if (
+            data.type === "SUPPORT_REPLY_RECEIVED" ||
+            data.type === "SUPPORT_MESSAGE_RECEIVED" ||
+            data.type === "MESSAGE_RECEIVED"
+          ) {
+            refreshDbConversations();
+            setUpdateTick((t) => t + 1);
+          }
+        } catch (e) {
+          // ignore
+        }
+      };
+    } catch (err) {
+      console.warn("SSE stream setup warning:", err);
+    }
+
+    return () => {
+      if (eventSource) eventSource.close();
+    };
+  }, [isAuthed, user?.id, refreshDbConversations]);
+
+  // 4. Fetch full messages for the active conversation
+  const loadConversationMessages = useCallback(
+    async (convId) => {
+      if (!convId || !isAuthed) return;
+      try {
+        if (convId === "support" || convId.startsWith("support_")) {
+          const supportData = await supportApi.getConversation();
+          if (supportData && supportData.messages) {
+            const formatted = supportData.messages.map((m) => ({
+              id: m.id,
+              senderId: m.senderId,
+              sender: m.sender === "me" || m.senderId === user?.id ? "me" : "them",
+              senderName: m.senderId === user?.id ? "You" : "Support (Admin)",
+              isAdmin: m.isAdmin || m.senderId !== user?.id,
+              text: m.body || m.message || m.text,
+              body: m.body || m.message || m.text,
+              time: formatMessageTime(m.createdAt),
+              createdAt: m.createdAt,
+            }));
+            setConversationMessagesMap((prev) => ({
+              ...prev,
+              [convId]: formatted,
+              support: formatted,
+              ...(supportData.id ? { [supportData.id]: formatted } : {}),
+            }));
+          }
+        } else {
+          const detail = await messageApi.get(convId);
+          if (detail && detail.messages) {
+            const formatted = detail.messages.map((m) => ({
+              id: m.id,
+              senderId: m.senderId,
+              sender: m.sender === "me" || m.senderId === user?.id ? "me" : "them",
+              senderName: m.senderId === user?.id ? "You" : m.senderName || "Them",
+              isAdmin: m.isAdmin,
+              text: m.body || m.text,
+              body: m.body || m.text,
+              time: formatMessageTime(m.createdAt),
+              createdAt: m.createdAt,
+            }));
+            setConversationMessagesMap((prev) => ({
+              ...prev,
+              [convId]: formatted,
+            }));
+          }
+        }
+      } catch (err) {
+        console.warn("Could not load full messages for conversation:", err.message);
+      }
+    },
+    [isAuthed, user?.id]
+  );
+
+  useEffect(() => {
+    if (activeChannelId) {
+      loadConversationMessages(activeChannelId);
+    }
+  }, [activeChannelId, loadConversationMessages, updateTick]);
+
+  // 5. Unified Conversation List (Merged DB conversations & Stream channels)
   const conversations = useMemo(() => {
     if (!user) return [];
 
     const map = new Map();
 
+    // First, populate from DB conversations (Guaranteed persistent source of truth!)
+    dbConversations.forEach((dbc) => {
+      const isSupport = Boolean(
+        dbc.isSupport ||
+        dbc.type === "SUPPORT" ||
+        dbc.otherPartyRole === "ADMIN" ||
+        dbc.otherPartyId === "support" ||
+        dbc.id === "support" ||
+        dbc.otherPartyName === "Support" ||
+        dbc.otherPartyName === "Support (Admin)"
+      );
+
+      const cachedMsgs =
+        conversationMessagesMap[dbc.id] ||
+        (isSupport ? conversationMessagesMap["support"] : null) ||
+        [];
+
+      const otherUserId = isSupport ? "support" : dbc.otherPartyId || dbc.id;
+      const otherName = isSupport ? "Support (Admin)" : dbc.otherPartyName || "User";
+
+      const landContext = dbc.landId
+        ? {
+            id: dbc.landId,
+            title: dbc.landTitle || "Land Inquiry",
+            price: null,
+            location: null,
+            image: null,
+            slug: null,
+          }
+        : null;
+
+      map.set(otherUserId, {
+        id: dbc.id,
+        cid: `messaging:${dbc.id}`,
+        channel: null,
+        name: isSupport ? "Support (Admin)" : otherName,
+        subtitle: isSupport
+          ? "TerraMatch Platform Support"
+          : landContext
+          ? `Re: ${landContext.title}`
+          : dbc.otherPartyRole || "Direct Message",
+        isSupport,
+        avatarInitials: isSupport ? "SUP" : initialsFrom(otherName),
+        avatarUrl: dbc.otherPartyAvatarUrl || null,
+        otherUserId,
+        otherUserRole: isSupport ? "ADMIN" : dbc.otherPartyRole,
+        lastMessageTime: formatMessageTime(dbc.lastMessageAt),
+        unreadCount: dbc.unreadCount || 0,
+        landContext,
+        projectContext: null,
+        isBuyNowRequest: Boolean(dbc.landId),
+        messages: cachedMsgs.length > 0 ? cachedMsgs : dbc.lastMessageText ? [
+          {
+            id: `initial-${dbc.id}`,
+            sender: "them",
+            senderName: isSupport ? "Support (Admin)" : otherName,
+            text: dbc.lastMessageText,
+            body: dbc.lastMessageText,
+            time: formatMessageTime(dbc.lastMessageAt),
+            createdAt: dbc.lastMessageAt,
+          }
+        ] : [],
+      });
+    });
+
+    // Second, merge Stream channels
     rawChannels.forEach((chan) => {
       const state = chan.state;
       const members = Object.values(state.members || {});
       const otherMember = members.find((m) => m.user?.id !== user.id)?.user || members[0]?.user || {};
-      const otherUserId = otherMember.id || chan.id;
       const rawName = otherMember.name || "TerraMatch User";
       const isSupport = Boolean(
         otherMember.customRole === "ADMIN" ||
@@ -161,17 +402,22 @@ export function MessagesProvider({ children }) {
         chan.id.startsWith("support_") ||
         chan.id.startsWith("tm_support_")
       );
+      const otherUserId = isSupport ? "support" : otherMember.id || chan.id;
       const otherName = isSupport ? "Support (Admin)" : rawName;
 
-      const messages = (state.messages || []).map((m) => ({
+      const streamMessages = (state.messages || []).map((m) => ({
         id: m.id,
+        senderId: m.user?.id,
         sender: m.user?.id === user.id ? "me" : "them",
+        senderName: m.user?.id === user.id ? "You" : isSupport ? "Support (Admin)" : otherName,
+        isAdmin: isSupport && m.user?.id !== user.id,
         text: m.text,
+        body: m.text,
         time: formatMessageTime(m.created_at),
         createdAt: m.created_at,
       }));
 
-      const lastMsg = messages[messages.length - 1];
+      const lastMsg = streamMessages[streamMessages.length - 1];
 
       const landContext = chan.data?.landId
         ? {
@@ -193,69 +439,95 @@ export function MessagesProvider({ children }) {
           }
         : null;
 
-      const conv = {
-        id: chan.id,
-        cid: chan.cid,
-        channel: chan,
-        name: otherName,
-        subtitle: isSupport
-          ? "TerraMatch Platform Support"
-          : landContext
-          ? `Re: ${landContext.title}`
-          : projectContext
-          ? `Project: ${projectContext.title}`
-          : otherMember.customRole || "Direct Message",
-        isSupport,
-        avatarInitials: isSupport ? "SUP" : initialsFrom(otherName),
-        avatarUrl: otherMember.image || null,
-        otherUserId,
-        otherUserRole: isSupport ? "ADMIN" : otherMember.customRole,
-        lastMessageTime: lastMsg ? lastMsg.time : formatMessageTime(chan.data?.last_message_at || chan.data?.created_at),
-        unreadCount: chan.countUnread ? chan.countUnread() : 0,
-        landContext,
-        projectContext,
-        isBuyNowRequest: Boolean(chan.data?.landId),
-        messages,
-      };
-
       if (!map.has(otherUserId)) {
-        map.set(otherUserId, conv);
+        const cachedMsgs =
+          conversationMessagesMap[chan.id] ||
+          (isSupport ? conversationMessagesMap["support"] : null) ||
+          [];
+
+        map.set(otherUserId, {
+          id: chan.id,
+          cid: chan.cid,
+          channel: chan,
+          name: isSupport ? "Support (Admin)" : otherName,
+          subtitle: isSupport
+            ? "TerraMatch Platform Support"
+            : landContext
+            ? `Re: ${landContext.title}`
+            : projectContext
+            ? `Project: ${projectContext.title}`
+            : otherMember.customRole || "Direct Message",
+          isSupport,
+          avatarInitials: isSupport ? "SUP" : initialsFrom(otherName),
+          avatarUrl: otherMember.image || null,
+          otherUserId,
+          otherUserRole: isSupport ? "ADMIN" : otherMember.customRole,
+          lastMessageTime: lastMsg
+            ? lastMsg.time
+            : formatMessageTime(chan.data?.last_message_at || chan.data?.created_at),
+          unreadCount: chan.countUnread ? chan.countUnread() : 0,
+          landContext,
+          projectContext,
+          isBuyNowRequest: Boolean(chan.data?.landId),
+          messages: streamMessages.length > 0 ? streamMessages : cachedMsgs,
+        });
       } else {
-        // Merge duplicate channel messages into single conversation thread
+        // Merge into existing DB conversation
         const existing = map.get(otherUserId);
-        const combined = [...existing.messages, ...messages].sort(
+        existing.channel = chan;
+        if (chan.id) existing.cid = chan.cid;
+
+        const allMsgs = [...existing.messages, ...streamMessages].sort(
           (a, b) => new Date(a.createdAt || 0) - new Date(b.createdAt || 0)
         );
         const uniqueMessages = [];
         const seenMsgIds = new Set();
-        for (const msg of combined) {
-          if (!seenMsgIds.has(msg.id)) {
+        for (const msg of allMsgs) {
+          if (msg.id && !seenMsgIds.has(msg.id)) {
             seenMsgIds.add(msg.id);
+            uniqueMessages.push(msg);
+          } else if (!msg.id) {
             uniqueMessages.push(msg);
           }
         }
-        existing.messages = uniqueMessages;
-        if (conv.landContext) existing.landContext = conv.landContext;
-        existing.unreadCount += conv.unreadCount;
-        if (new Date(chan.data?.last_message_at || 0) > new Date(existing.channel?.data?.last_message_at || 0)) {
-          existing.id = chan.id;
-          existing.cid = chan.cid;
-          existing.channel = chan;
-          existing.lastMessageTime = conv.lastMessageTime;
+        if (uniqueMessages.length > 0) {
+          existing.messages = uniqueMessages;
+        }
+        if (landContext) existing.landContext = landContext;
+        if (projectContext) existing.projectContext = projectContext;
+        if (chan.countUnread && chan.countUnread() > 0) {
+          existing.unreadCount = chan.countUnread();
         }
       }
     });
 
     return Array.from(map.values());
-  }, [rawChannels, user, updateTick]);
+  }, [dbConversations, rawChannels, user, conversationMessagesMap, updateTick]);
 
   const totalUnread = useMemo(() => {
     return conversations.reduce((sum, c) => sum + (c.unreadCount || 0), 0);
   }, [conversations]);
 
-  // Start or get a Stream conversation
+  // 6. Start or get a Stream / DB conversation
   const startConversation = useCallback(
-    async ({ targetUserId, targetSlug, landId, projectId, initialMessage }) => {
+    async ({ targetUserId, targetSlug, landId, projectId, initialMessage, isSupport }) => {
+      const isSupportAction = isSupport || targetUserId === "support" || targetSlug === "support";
+
+      if (isSupportAction) {
+        if (initialMessage && initialMessage.trim()) {
+          const res = await supportApi.sendMessage(initialMessage.trim());
+          await refreshDbConversations();
+          setActiveChannelId(res.conversationId || "support");
+          return { conversationId: res.conversationId || "support", channelId: res.channelId || `support_${user?.id}` };
+        } else {
+          const res = await supportApi.getConversation();
+          await refreshDbConversations();
+          const targetId = res?.id || "support";
+          setActiveChannelId(targetId);
+          return { conversationId: targetId, channelId: `support_${user?.id}` };
+        }
+      }
+
       const res = await chatApi.createOrGetChannel({
         targetUserId,
         targetSlug,
@@ -265,6 +537,7 @@ export function MessagesProvider({ children }) {
       });
 
       const channelId = res.channelId;
+      await refreshDbConversations();
 
       if (clientRef.current && user) {
         const filter = { members: { $in: [user.id] } };
@@ -274,9 +547,9 @@ export function MessagesProvider({ children }) {
       }
 
       setActiveChannelId(channelId);
-      return { conversationId: channelId, channelId };
+      return { conversationId: res.conversationId || channelId, channelId };
     },
-    [user]
+    [user, refreshDbConversations]
   );
 
   // Buy Now flow creates/opens a conversation with land metadata
@@ -292,29 +565,72 @@ export function MessagesProvider({ children }) {
     [startConversation]
   );
 
-  // Send a message to a channel
+  // 7. Send message to active conversation (Supports DB API, Support API, and Stream Chat!)
   const sendMessage = useCallback(
     async (channelId, text) => {
-      if (!text || !text.trim() || !clientRef.current) return;
-      let targetChan = rawChannels.find((c) => c.id === channelId || c.cid === channelId);
-      if (!targetChan && channelId) {
+      if (!text || !text.trim() || !user) return;
+      const cleanText = text.trim();
+
+      const conv = conversations.find(
+        (c) => c.id === channelId || c.cid === channelId || (channelId === "support" && c.isSupport)
+      );
+      const isSupportMsg = channelId === "support" || conv?.isSupport || channelId.startsWith("support_");
+
+      // Optimistic Message UI update
+      const optimisticMsg = {
+        id: `temp-${Date.now()}`,
+        senderId: user.id,
+        sender: "me",
+        senderName: "You",
+        isAdmin: false,
+        text: cleanText,
+        body: cleanText,
+        time: "Just now",
+        createdAt: new Date().toISOString(),
+      };
+
+      const targetKey = conv?.id || channelId;
+      setConversationMessagesMap((prev) => ({
+        ...prev,
+        [targetKey]: [...(prev[targetKey] || conv?.messages || []), optimisticMsg],
+        ...(isSupportMsg ? { support: [...(prev["support"] || conv?.messages || []), optimisticMsg] } : {}),
+      }));
+
+      // Send to Backend Database API
+      try {
+        if (isSupportMsg) {
+          await supportApi.sendMessage(cleanText);
+        } else if (conv?.id && conv.id !== "support") {
+          await messageApi.send(conv.id, cleanText);
+        }
+      } catch (dbErr) {
+        console.warn("Backend DB message send warning:", dbErr.message);
+      }
+
+      // Send via Stream Chat if available
+      if (clientRef.current) {
         try {
-          const rawId = channelId.includes(":") ? channelId.split(":")[1] : channelId;
-          targetChan = clientRef.current.channel("messaging", rawId);
-          await targetChan.watch();
-        } catch (e) {
-          console.warn("Could not resolve channel for message:", e);
+          let targetChan = rawChannels.find((c) => c.id === channelId || c.cid === channelId);
+          if (!targetChan && channelId) {
+            const rawId = channelId.includes(":") ? channelId.split(":")[1] : channelId;
+            targetChan = clientRef.current.channel("messaging", rawId);
+            await targetChan.watch();
+          }
+          if (targetChan) {
+            await targetChan.sendMessage({ text: cleanText });
+          }
+        } catch (streamErr) {
+          console.warn("Stream send message warning:", streamErr.message);
         }
       }
-      if (targetChan) {
-        await targetChan.sendMessage({ text: text.trim() });
-        setUpdateTick((t) => t + 1);
-      }
+
+      setUpdateTick((t) => t + 1);
+      await refreshDbConversations();
     },
-    [rawChannels]
+    [conversations, rawChannels, user, refreshDbConversations]
   );
 
-  // Mark channel messages as read
+  // 8. Mark channel messages as read
   const markRead = useCallback(
     async (channelId) => {
       let targetChan = rawChannels.find((c) => c.id === channelId || c.cid === channelId);
@@ -327,14 +643,18 @@ export function MessagesProvider({ children }) {
         }
       }
       if (targetChan) {
-        await targetChan.markRead();
-        setUpdateTick((t) => t + 1);
+        try {
+          await targetChan.markRead();
+        } catch (e) {
+          // ignore
+        }
       }
+      setUpdateTick((t) => t + 1);
     },
     [rawChannels]
   );
 
-  // Ensure conversation exists or resolve from URL contact/project/land parameter
+  // 9. Ensure conversation exists or resolve from URL contact/project/land parameter
   const ensureConversation = useCallback(
     async (contactParam, { projectId, landId } = {}) => {
       if (!contactParam && !projectId && !landId) return null;
@@ -344,13 +664,15 @@ export function MessagesProvider({ children }) {
 
       const directMatch = conversations.find(
         (c) =>
-          (isSupportQuery && (c.isSupport || c.otherUserRole === "ADMIN" || c.id.startsWith("support_"))) ||
+          (isSupportQuery && c.isSupport) ||
           (contactParam && (c.id === contactParam || c.cid === contactParam || c.otherUserId === contactParam)) ||
           (!contactParam && projectId && c.projectContext?.id === projectId) ||
           (!contactParam && landId && c.landContext?.id === landId)
       );
+
       if (directMatch) {
         setActiveChannelId(directMatch.id);
+        loadConversationMessages(directMatch.id);
         return directMatch.id;
       }
 
@@ -362,33 +684,28 @@ export function MessagesProvider({ children }) {
           projectId,
           landId,
         });
-        if (res?.channelId) {
-          setActiveChannelId(res.channelId);
-          return res.channelId;
+        if (res?.conversationId || res?.channelId) {
+          const targetId = res.conversationId || res.channelId;
+          setActiveChannelId(targetId);
+          loadConversationMessages(targetId);
+          return targetId;
         }
       } catch (err) {
-        console.warn("Could not automatically create channel for contact:", err.message);
+        console.warn("Could not automatically create conversation for contact:", err.message);
       }
 
       return contactParam;
     },
-    [conversations, startConversation]
+    [conversations, startConversation, loadConversationMessages]
   );
 
   const startSupportConversation = useCallback(
     async (initialMessage) => {
-      try {
-        const res = await startConversation({
-          targetUserId: "support",
-          isSupport: true,
-          initialMessage,
-        });
-        return res;
-      } catch (err) {
-        // Fallback to supportApi directly
-        const fallback = await supportApi.sendMessage(initialMessage);
-        return fallback;
-      }
+      return startConversation({
+        targetUserId: "support",
+        isSupport: true,
+        initialMessage,
+      });
     },
     [startConversation]
   );
@@ -407,6 +724,7 @@ export function MessagesProvider({ children }) {
       sendMessage,
       markRead,
       ensureConversation,
+      refreshDbConversations,
     }),
     [
       client,
@@ -420,6 +738,7 @@ export function MessagesProvider({ children }) {
       sendMessage,
       markRead,
       ensureConversation,
+      refreshDbConversations,
     ]
   );
 
