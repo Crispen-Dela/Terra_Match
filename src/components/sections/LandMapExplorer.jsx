@@ -18,17 +18,74 @@ L.Icon.Default.mergeOptions({
   shadowUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png",
 });
 
-function createPriceIcon(price) {
+// Known fallback coordinates for Greater Accra & surroundings
+const DEFAULT_COORDINATES = {
+  "east-legon-hills": { lat: 5.698, lng: -0.134 },
+  "oyarifa-extension": { lat: 5.750, lng: -0.170 },
+  "adenta-hills": { lat: 5.715, lng: -0.160 },
+  "tema-community-25": { lat: 5.720, lng: -0.010 },
+  "airport-hills": { lat: 5.605, lng: -0.155 },
+  "kasoa-junction": { lat: 5.534, lng: -0.420 },
+  "kasoa": { lat: 5.534, lng: -0.420 },
+  "east-legon": { lat: 5.645, lng: -0.155 },
+  "airport-residential": { lat: 5.603, lng: -0.180 },
+  "cantonments": { lat: 5.580, lng: -0.170 },
+  "labone": { lat: 5.565, lng: -0.165 },
+  "spintex": { lat: 5.630, lng: -0.100 },
+  "osu": { lat: 5.556, lng: -0.182 },
+  "pokuase": { lat: 5.685, lng: -0.285 },
+  "madina": { lat: 5.670, lng: -0.165 },
+  "dodowa": { lat: 5.883, lng: -0.098 },
+  "aburi": { lat: 5.848, lng: -0.175 },
+};
+
+function createLandMarkerIcon(land, isSelected = false) {
+  const name = land.name || land.title || "Land Plot";
+  let priceLabel = land.price;
+  if (!priceLabel && land.totalPrice) {
+    priceLabel = `GH₵${land.totalPrice.toLocaleString()}`;
+  } else if (!priceLabel && land.pricePerSqFt) {
+    priceLabel = `GH₵${land.pricePerSqFt}/sq ft`;
+  } else if (!priceLabel) {
+    priceLabel = "Verified Plot";
+  }
+
+  const safeName = String(name)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+  const safePrice = String(priceLabel)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+
+  const borderCol = isSelected ? "#059669" : "#0f172a";
+  const bgCol = isSelected ? "#ecfdf5" : "#ffffff";
+  const titleCol = isSelected ? "#064e3b" : "#0f172a";
+  const priceCol = "#059669";
+  const shadow = isSelected
+    ? "box-shadow: 0 0 0 3px rgba(5, 150, 105, 0.4), 0 8px 20px rgba(0,0,0,0.35);"
+    : "box-shadow: 0 4px 14px rgba(0,0,0,0.28);";
+
   return L.divIcon({
     className: "custom-leaflet-pin",
     html: `
-      <div style="background: #112a20; color: #fff; padding: 4px 8px; border-radius: 6px; font-weight: bold; font-size: 11px; white-space: nowrap; box-shadow: 0 4px 10px rgba(0,0,0,0.3); border: 1.5px solid #2d6a4f; text-align: center; transform: translate(-50%, -100%);">
-        ${price}
-        <div style="position: absolute; left: 50%; top: 100%; width: 0; height: 0; transform: translateX(-50%); border-left: 5px solid transparent; border-right: 5px solid transparent; border-top: 5px solid #112a20;"></div>
+      <div style="display: flex; flex-direction: column; align-items: center; cursor: pointer; transform: translate(-50%, -100%); pointer-events: auto;">
+        <div style="display: flex; align-items: center; gap: 7px; background: ${bgCol}; color: ${titleCol}; padding: 5px 10px 5px 7px; border-radius: 9999px; border: 2px solid ${borderCol}; ${shadow} font-family: system-ui, -apple-system, sans-serif; white-space: nowrap; transition: all 0.15s ease;">
+          <span style="display: flex; align-items: center; justify-content: center; width: 20px; height: 20px; border-radius: 50%; background: #059669; color: #ffffff; font-size: 11px; font-weight: 900; flex-shrink: 0;">📍</span>
+          <div style="display: flex; flex-direction: column; text-align: left; line-height: 1.2;">
+            <span style="font-size: 11px; font-weight: 800; color: ${titleCol}; letter-spacing: -0.01em; max-width: 150px; overflow: hidden; text-overflow: ellipsis;">${safeName}</span>
+            <span style="font-size: 10px; font-weight: 800; color: ${priceCol};">${safePrice}</span>
+          </div>
+        </div>
+        <div style="width: 0; height: 0; border-left: 6px solid transparent; border-right: 6px solid transparent; border-top: 6px solid ${borderCol}; margin-top: -1px;"></div>
       </div>
     `,
     iconSize: [0, 0],
     iconAnchor: [0, 0],
+    popupAnchor: [0, -38]
   });
 }
 
@@ -50,7 +107,7 @@ const MAP_LAYERS = {
   },
 };
 
-function MapView({ validLands, defaultCenter, setSelectedLand, mapType = "satellite" }) {
+function MapView({ validLands, defaultCenter, setSelectedLand, selectedLand, mapType = "satellite" }) {
   const layer = MAP_LAYERS[mapType] || MAP_LAYERS.satellite;
 
   return (
@@ -67,8 +124,10 @@ function MapView({ validLands, defaultCenter, setSelectedLand, mapType = "satell
       />
 
       {validLands.map((land) => {
-        const lat = Number(land.latitude || land.lat || 5.651);
-        const lng = Number(land.longitude || land.lng || -0.162);
+        const slug = land.slug || land.id || "";
+        const matchedCoords = DEFAULT_COORDINATES[slug] || DEFAULT_COORDINATES[slug.toLowerCase()] || {};
+        const lat = Number(land.latitude || land.lat || matchedCoords.lat || 5.651);
+        const lng = Number(land.longitude || land.lng || matchedCoords.lng || -0.162);
         const priceLabel =
           land.price ||
           (land.totalPrice ? `GH₵${land.totalPrice.toLocaleString()}` : "Price on request");
@@ -80,18 +139,19 @@ function MapView({ validLands, defaultCenter, setSelectedLand, mapType = "satell
             ? rawLandImage
             : "https://images.unsplash.com/photo-1500382017468-9049fed747ef?w=400";
         const landSlug = land.slug || land.id || "";
+        const isSelected = selectedLand?.slug === landSlug || selectedLand?.id === land.id;
 
         return (
           <Marker
             key={landSlug || `${lat}-${lng}`}
             position={[lat, lng]}
-            icon={createPriceIcon(priceLabel)}
+            icon={createLandMarkerIcon(land, isSelected)}
             eventHandlers={{
               click: () => setSelectedLand(land),
             }}
           >
             <Popup>
-              <div className="p-1 max-w-[200px]">
+              <div className="p-1 max-w-[210px]">
                 <img
                   src={landImage}
                   alt={landName}
@@ -103,11 +163,11 @@ function MapView({ validLands, defaultCenter, setSelectedLand, mapType = "satell
                 />
                 <h4 className="font-bold text-xs text-ink-900">{landName}</h4>
                 <p className="text-[11px] text-ink-500">{landLocation}</p>
-                <p className="text-xs font-bold text-forest-700 mt-1">{priceLabel}</p>
+                <p className="text-xs font-extrabold text-[#059669] mt-1">{priceLabel}</p>
                 {landSlug && (
                   <Link
                     to={`/explore-land/${landSlug}`}
-                    className="mt-2 inline-block w-full rounded bg-forest-600 px-2 py-1 text-center text-[10px] font-bold text-white hover:bg-forest-700"
+                    className="mt-2 inline-block w-full rounded-lg bg-[#059669] px-2.5 py-1.5 text-center text-[11px] font-extrabold text-white hover:bg-[#047857] shadow-xs"
                   >
                     View Listing
                   </Link>
@@ -130,13 +190,13 @@ export default function LandMapExplorer({ lands = [], onViewAll, sectionId }) {
     setMounted(true);
   }, []);
 
-  const defaultCenter = [5.6037, -0.187]; // Accra, Ghana
+  const defaultCenter = [5.66, -0.16]; // Greater Accra, Ghana
   const validLands = (Array.isArray(lands) ? lands : []).filter(Boolean);
 
   return (
     <section id={sectionId} className="container-page pb-12">
       <div className="grid gap-6 lg:grid-cols-[1.5fr_1fr]">
-        {/* Interactive Leaflet Map */}
+        {/* Interactive Leaflet Map Container */}
         <div className="relative isolate z-0 aspect-[4/5] overflow-hidden rounded-2xl border border-ink-900/10 bg-slate-900 sm:aspect-[4/3] shadow-inner">
           {mounted ? (
             <ErrorBoundary
@@ -155,6 +215,7 @@ export default function LandMapExplorer({ lands = [], onViewAll, sectionId }) {
                 validLands={validLands}
                 defaultCenter={defaultCenter}
                 setSelectedLand={setSelectedLand}
+                selectedLand={selectedLand}
                 mapType={mapType}
               />
             </ErrorBoundary>
@@ -165,50 +226,53 @@ export default function LandMapExplorer({ lands = [], onViewAll, sectionId }) {
           )}
 
           {/* Environmental GIS Indicator Overlay */}
-          <div className="pointer-events-none absolute left-3 top-3 z-10 rounded-xl bg-white/95 px-3 py-1.5 shadow-md backdrop-blur-sm border border-ink-900/10">
-            <span className="flex items-center gap-1.5 text-[11px] font-bold text-ink-800">
-              <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
+          <div className="pointer-events-none absolute left-14 top-3 z-[1000] hidden sm:flex items-center gap-2 rounded-xl bg-white/95 px-3 py-2 shadow-lg backdrop-blur-md border border-slate-200">
+            <span className="h-2.5 w-2.5 rounded-full bg-emerald-500 animate-pulse shrink-0" />
+            <span className="text-[11px] font-extrabold text-slate-800 tracking-tight">
               Live GIS Satellite & Topographic Map
             </span>
           </div>
 
-          {/* Layer Switcher */}
-          <div className="absolute right-3 top-3 z-10 flex rounded-lg bg-white/95 p-1 shadow-md backdrop-blur-sm border border-ink-900/10">
+          {/* Layer Switcher - prominently displayed with z-[1000] */}
+          <div className="absolute right-3 top-3 z-[1000] flex items-center gap-1 rounded-xl bg-white/95 p-1.5 shadow-xl backdrop-blur-md border border-slate-200">
             <button
               type="button"
               onClick={() => setMapType("satellite")}
               className={cn(
-                "rounded-md px-2.5 py-1 text-[11px] font-bold transition-colors",
+                "flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-extrabold transition-all cursor-pointer",
                 mapType === "satellite"
-                  ? "bg-forest-600 text-white shadow-xs"
-                  : "text-ink-600 hover:text-ink-900"
+                  ? "bg-[#059669] text-white shadow-sm scale-[1.02]"
+                  : "text-slate-700 hover:bg-slate-100 hover:text-slate-900"
               )}
             >
-              Satellite
+              <span>🛰️</span>
+              <span>Satellite</span>
             </button>
             <button
               type="button"
               onClick={() => setMapType("topo")}
               className={cn(
-                "rounded-md px-2.5 py-1 text-[11px] font-bold transition-colors",
+                "flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-extrabold transition-all cursor-pointer",
                 mapType === "topo"
-                  ? "bg-forest-600 text-white shadow-xs"
-                  : "text-ink-600 hover:text-ink-900"
+                  ? "bg-[#059669] text-white shadow-sm scale-[1.02]"
+                  : "text-slate-700 hover:bg-slate-100 hover:text-slate-900"
               )}
             >
-              Topography
+              <span>⛰️</span>
+              <span>Topography</span>
             </button>
             <button
               type="button"
               onClick={() => setMapType("street")}
               className={cn(
-                "rounded-md px-2.5 py-1 text-[11px] font-bold transition-colors",
+                "flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-extrabold transition-all cursor-pointer",
                 mapType === "street"
-                  ? "bg-forest-600 text-white shadow-xs"
-                  : "text-ink-600 hover:text-ink-900"
+                  ? "bg-[#059669] text-white shadow-sm scale-[1.02]"
+                  : "text-slate-700 hover:bg-slate-100 hover:text-slate-900"
               )}
             >
-              Street
+              <span>🗺️</span>
+              <span>Street</span>
             </button>
           </div>
         </div>
