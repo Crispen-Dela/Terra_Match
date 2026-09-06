@@ -140,6 +140,10 @@ const ROLE_LABELS = {
   "land-owner": "Land Owner",
   contractor: "Contractor",
   "general-user": "General User",
+  CLIENT: "General User",
+  LAND_OWNER: "Land Owner",
+  CONTRACTOR: "Contractor",
+  ADMIN: "Administrator",
 };
 
 const ROLE_QUICK_LINK = {
@@ -169,8 +173,24 @@ export default function ProfileContent() {
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState("");
 
-  const roleLabel = ROLE_LABELS[role] || "Member";
-  const requiresGhanaCard = role === "land-owner" || role === "contractor";
+  const userRole = (user?.role || "").toUpperCase();
+  const isClientOrBuyer =
+    role === "general-user" ||
+    role === "CLIENT" ||
+    userRole === "CLIENT" ||
+    userRole === "GENERAL-USER" ||
+    (!role && !userRole);
+
+  const requiresGhanaCard =
+    !isClientOrBuyer &&
+    (role === "land-owner" ||
+      role === "contractor" ||
+      userRole === "LAND_OWNER" ||
+      userRole === "CONTRACTOR");
+
+  const roleLabel =
+    ROLE_LABELS[role] || ROLE_LABELS[user?.role] || "General User";
+
   const quickLinks = [
     ROLE_QUICK_LINK[role] || ROLE_QUICK_LINK["general-user"],
     { icon: ChatIcon, title: "Messages", description: "Check conversations with buyers and contractors.", to: "/messages" },

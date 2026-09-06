@@ -32,9 +32,28 @@ export default function DashboardHeader({
   roleLabel = "VERIFIED LAND OWNER",
   editProfileTo,
 }) {
-
   const [imgError, setImgError] = useState(false);
-  const isVerified = verification?.status === "VERIFIED" || user?.ghanaCardVerified || true;
+
+  // Normal users / buyers do NOT require Ghana Card verification
+  const userRole = (user?.role || "").toUpperCase();
+  const isClientOrBuyer =
+    userRole === "CLIENT" ||
+    userRole === "GENERAL-USER" ||
+    roleLabel?.toLowerCase().includes("member") ||
+    roleLabel?.toLowerCase().includes("buyer") ||
+    roleLabel?.toLowerCase().includes("client");
+
+  const requiresGhanaCard =
+    !isClientOrBuyer &&
+    (userRole === "LAND_OWNER" ||
+      userRole === "CONTRACTOR" ||
+      userRole === "ADMIN" ||
+      roleLabel?.toLowerCase().includes("land owner") ||
+      roleLabel?.toLowerCase().includes("contractor"));
+
+  const isGhanaCardVerified =
+    requiresGhanaCard &&
+    (verification?.status === "VERIFIED" || Boolean(user?.ghanaCardVerified));
 
   const displayName = user?.name || "Kwame Owusu";
   const displayEmail = user?.email || "kwame.owusu@email.com";
@@ -58,7 +77,7 @@ export default function DashboardHeader({
                 {(displayName[0] || "K").toUpperCase()}
               </div>
             )}
-            {isVerified && (
+            {isGhanaCardVerified && (
               <span
                 className="absolute -bottom-1 -right-1 flex h-6 w-6 items-center justify-center rounded-full bg-[#059669] text-white shadow-sm ring-2 ring-[#063929]"
                 title="Ghana Card Identity Verified"
@@ -82,12 +101,27 @@ export default function DashboardHeader({
               {displayEmail} {displayPhone ? `• ${displayPhone}` : ""}
             </p>
 
-            {/* Ghana Card Verified & Profile Completion */}
+            {/* Profile Metrics Row */}
             <div className="mt-3 flex flex-wrap items-center gap-3">
-              <span className="inline-flex items-center gap-1.5 rounded-full bg-[#134232] px-3 py-1 text-xs font-semibold text-emerald-300 border border-emerald-600/30">
-                <ShieldCheckIcon className="h-4 w-4 text-emerald-400" />
-                Ghana Card Verified
-              </span>
+              {/* Ghana Card Verified / Pending Badge — only shown for Land Owners and Contractors */}
+              {requiresGhanaCard && (
+                <span
+                  className={cn(
+                    "inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold border",
+                    isGhanaCardVerified
+                      ? "bg-[#134232] text-emerald-300 border-emerald-600/30"
+                      : "bg-amber-950/60 text-amber-300 border-amber-600/30"
+                  )}
+                >
+                  <ShieldCheckIcon
+                    className={cn(
+                      "h-4 w-4",
+                      isGhanaCardVerified ? "text-emerald-400" : "text-amber-400"
+                    )}
+                  />
+                  {isGhanaCardVerified ? "Ghana Card Verified" : "Ghana Card Pending"}
+                </span>
+              )}
 
               <div className="inline-flex items-center gap-2.5 rounded-full bg-[#134232] px-3.5 py-1 text-xs font-semibold text-white border border-emerald-600/30">
                 <span>Profile: {profileCompletion}%</span>

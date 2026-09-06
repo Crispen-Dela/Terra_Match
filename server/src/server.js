@@ -69,8 +69,8 @@ if (!fs.existsSync(uploadDir)) {
 }
 app.use("/uploads", express.static(uploadDir));
 
-// Health check endpoint
-app.get("/api/health", (req, res) => {
+// Health check endpoints
+app.get(["/health", "/api/health"], (req, res) => {
   res.json({
     status: "ok",
     service: "TerraMatch Backend API",

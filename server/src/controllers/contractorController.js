@@ -209,6 +209,10 @@ export async function getContractorBySlug(req, res, next) {
 
 export async function getMyProfile(req, res, next) {
   try {
+    if (req.user.role !== "CONTRACTOR" && req.user.role !== "ADMIN") {
+      throw new AppError("Access denied. Only registered contractors can manage a contractor profile.", 403);
+    }
+
     let profile = await prisma.contractorProfile.findUnique({
       where: { userId: req.user.id },
       include: { user: true },
@@ -238,6 +242,14 @@ export async function getMyProfile(req, res, next) {
 
 export async function getProfileStatus(req, res, next) {
   try {
+    if (req.user.role !== "CONTRACTOR" && req.user.role !== "ADMIN") {
+      return res.json({
+        isComplete: true,
+        missingRequirements: [],
+        profile: null,
+      });
+    }
+
     const profile = await prisma.contractorProfile.findUnique({
       where: { userId: req.user.id },
       include: { user: true },
@@ -268,6 +280,9 @@ export async function getProfileStatus(req, res, next) {
 
 export async function updateMyProfile(req, res, next) {
   try {
+    if (req.user.role !== "CONTRACTOR" && req.user.role !== "ADMIN") {
+      throw new AppError("Access denied. Only registered contractors can manage a contractor profile.", 403);
+    }
     const {
       companyName,
       category,
@@ -339,6 +354,9 @@ export async function updateMyProfile(req, res, next) {
 
 export async function addProject(req, res, next) {
   try {
+    if (req.user.role !== "CONTRACTOR" && req.user.role !== "ADMIN") {
+      throw new AppError("Access denied. Only registered contractors can manage a portfolio.", 403);
+    }
     const { title, description, images } = req.body;
 
     if (!title || !String(title).trim()) {
