@@ -1,11 +1,14 @@
 import { useState, useEffect, useRef } from "react";
 import { SearchIcon, BellIcon } from "./AdminIcons";
 import { adminApi } from "../../services/authApi";
+import { useSystemStatus } from "../../context/SystemStatusContext";
+import { cn } from "../../utils/cn";
 
 export default function AdminHeader({ user, onOpenProfile }) {
   const [notifications, setNotifications] = useState([]);
   const [showDropdown, setShowDropdown] = useState(false);
   const dropdownRef = useRef(null);
+  const { isShutdown } = useSystemStatus();
 
   useEffect(() => {
     adminApi.listNotifications()
@@ -52,6 +55,25 @@ export default function AdminHeader({ user, onOpenProfile }) {
               ⌘K
             </kbd>
           </div>
+        </div>
+
+        {/* Live Platform Operational Status Indicator */}
+        <div
+          className={cn(
+            "hidden md:inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-bold border",
+            isShutdown
+              ? "border-rose-500/40 bg-rose-500/10 text-rose-400 animate-pulse"
+              : "border-emerald-500/40 bg-emerald-500/10 text-emerald-400"
+          )}
+          title={isShutdown ? "Platform is Shut Down - Public Access Suspended" : "Platform is Online & Operational"}
+        >
+          <span
+            className={cn(
+              "h-2 w-2 rounded-full",
+              isShutdown ? "bg-rose-500" : "bg-emerald-500"
+            )}
+          />
+          <span>{isShutdown ? "Site: Shut Down" : "Site: Online"}</span>
         </div>
       </div>
 

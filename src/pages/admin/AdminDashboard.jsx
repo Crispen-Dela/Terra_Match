@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { adminApi } from "../../services/authApi";
 import { subscribeToBidEvents } from "../../services/bidEvents";
 import { useAuth } from "../../context/AuthContext";
+import { useSystemStatus } from "../../context/SystemStatusContext";
 
 // Layout & UI Components
 import AdminLayout from "../../components/admin/AdminLayout";
@@ -16,11 +17,13 @@ import ProjectsTab from "../../components/admin/tabs/ProjectsTab";
 import AuditLogsTab from "../../components/admin/tabs/AuditLogsTab";
 import ChatsTab from "../../components/admin/tabs/ChatsTab";
 import SupportTab from "../../components/admin/tabs/SupportTab";
+import SettingsTab from "../../components/admin/tabs/SettingsTab";
 import PlaceholderTab from "../../components/admin/tabs/PlaceholderTab";
 
 export default function AdminDashboard() {
   const navigate = useNavigate();
   const { user, isAdmin, logout } = useAuth();
+  const { isShutdown } = useSystemStatus();
 
   // Navigation State
   const [activeTab, setActiveTab] = useState("overview"); 
@@ -245,7 +248,7 @@ export default function AdminDashboard() {
         return <SupportTab />;
 
       case "settings":
-        return <PlaceholderTab title="Platform Settings" description="Global configurations, feature flags, and administrative controls." />;
+        return <SettingsTab stats={stats} onRefresh={loadData} />;
       
       case "profile":
         return <AdminProfileTab user={user} stats={stats} onBack={() => setActiveTab("overview")} />;
@@ -277,6 +280,27 @@ export default function AdminDashboard() {
       setActiveTab={setActiveTab} 
       onLogout={handleLogout}
     >
+      {isShutdown && (
+        <div className="mb-6 flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-2xl border border-rose-500/50 bg-rose-950/50 p-4 text-xs sm:text-sm text-rose-200 shadow-xl shadow-rose-950/40 animate-pulse">
+          <div className="flex items-center gap-2.5 font-bold">
+            <span className="flex h-3 w-3 relative">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75"></span>
+              <span className="relative inline-flex rounded-full h-3 w-3 bg-rose-500"></span>
+            </span>
+            <span>EMERGENCY WEBSITE SHUTDOWN ACTIVE</span>
+            <span className="hidden md:inline font-normal text-rose-300">• Public access is locked. Visitors are seeing the maintenance screen.</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setActiveTab("settings")}
+              className="rounded-xl bg-rose-600 px-3.5 py-1.5 text-xs font-extrabold text-white hover:bg-rose-500 transition cursor-pointer"
+            >
+              Open Shutdown Controls &rarr;
+            </button>
+          </div>
+        </div>
+      )}
       {renderTabContent()}
     </AdminLayout>
   );

@@ -26,3 +26,7 @@ yarn-error.log*
 server/uploads/*
 !server/uploads/.gitkeep
 
+# System dynamic state
+system_state.json
+server/system_state.json
+

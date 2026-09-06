@@ -21,6 +21,8 @@ import {
   replyToSupportTicket,
   listNotifications,
   markNotificationRead,
+  getSystemStatus,
+  toggleSystemMaintenance,
 } from "../controllers/adminController.js";
 import { authenticate } from "../middlewares/auth.js";
 import { requireAdmin } from "../middlewares/admin.js";
@@ -57,5 +59,9 @@ router.post("/support/:id/reply", replyToSupportTicket);
 // Notifications
 router.get("/notifications", listNotifications);
 router.put("/notifications/:id/read", markNotificationRead);
+
+// Platform System Control
+router.get("/system/status", getSystemStatus);
+router.post("/system/toggle-maintenance", toggleSystemMaintenance);
 
 export default router;

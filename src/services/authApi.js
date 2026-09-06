@@ -72,7 +72,16 @@ export const adminApi = {
   
   listNotifications: () => api.get("/api/admin/notifications"),
   markNotificationRead: (id) => api.put(`/api/admin/notifications/${id}/read`),
+  
+  getSystemStatus: () => api.get("/api/system/status", { skipAuth: true }),
+  toggleSystemMaintenance: (data) => api.post("/api/admin/system/toggle-maintenance", data),
 };
+
+export const systemApi = {
+  getStatus: () => api.get("/api/system/status", { skipAuth: true }),
+  toggleMaintenance: (data) => api.post("/api/admin/system/toggle-maintenance", data),
+};
+
 export const uploadApi = {
   uploadFile: async (file) => {
     const formData = new FormData();

@@ -6,7 +6,9 @@ import AppRoutes from "./routes/AppRoutes";
 import EmailVerificationBanner from "./components/common/EmailVerificationBanner";
 import FloatingAiWidget from "./components/ai/FloatingAiWidget";
 import LoadingScreen from "./components/common/LoadingScreen";
+import SystemShutdownScreen from "./components/common/SystemShutdownScreen";
 import { useAuth, GHANA_CARD_REQUIRED_ROLES } from "./context/AuthContext";
+import { useSystemStatus } from "./context/SystemStatusContext";
 
 // No route-based authed overrides — the Navbar shows the correct
 // signed-in state based solely on the real session (isAuthed).
@@ -79,6 +81,7 @@ const GHANA_CARD_GATED_ROUTES = ["/list-your-land"];
 export default function App() {
   const { pathname } = useLocation();
   const { isAuthed, isLoading, role, ghanaCardVerified, isAdmin } = useAuth();
+  const { isShutdown } = useSystemStatus();
   const [initialLoading, setInitialLoading] = useState(true);
 
   useEffect(() => {
@@ -95,6 +98,19 @@ export default function App() {
 
   if (isLoading || initialLoading) {
     return <LoadingScreen />;
+  }
+
+  // EMERGENCY PLATFORM SHUTDOWN GATEKEEPER
+  // If the website is shut down:
+  // - ONLY the Admin Portal (/admin, /admin/login) or authenticated admins have access.
+  // - All other public visitors and user pages display the SystemShutdownScreen.
+  if (isShutdown) {
+    const isAdminRoute = pathname.startsWith("/admin");
+    const isUserAdmin = Boolean(isAuthed && (role === "ADMIN" || isAdmin));
+
+    if (!isAdminRoute && !isUserAdmin) {
+      return <SystemShutdownScreen />;
+    }
   }
 
   // Admin routing protection: an authenticated admin stays in the Admin Portal

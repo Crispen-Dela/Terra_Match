@@ -19,6 +19,7 @@ import uploadRoutes from "./routes/uploadRoutes.js";
 import dashboardRoutes from "./routes/dashboardRoutes.js";
 import notificationRoutes from "./routes/notificationRoutes.js";
 import { errorHandler } from "./middlewares/errorHandler.js";
+import { getSystemStateDirect } from "./controllers/adminController.js";
 import prisma from "./config/prisma.js";
 import { seedDatabase } from "../prisma/seed.js";
 
@@ -69,13 +70,49 @@ if (!fs.existsSync(uploadDir)) {
 }
 app.use("/uploads", express.static(uploadDir));
 
-// Health check endpoints
+// Health check & Public System Status endpoints
 app.get(["/health", "/api/health"], (req, res) => {
   res.json({
     status: "ok",
     service: "TerraMatch Backend API",
     version: "1.0.0",
+    systemState: getSystemStateDirect(),
     timestamp: new Date().toISOString(),
+  });
+});
+
+app.get(["/api/system/status", "/system/status"], (req, res) => {
+  res.json(getSystemStateDirect());
+});
+
+// System Maintenance Gatekeeper: If maintenance mode is active, reject public API actions
+app.use((req, res, next) => {
+  const state = getSystemStateDirect();
+  if (!state.isMaintenance) return next();
+
+  // Always allow health checks, system status, admin endpoints, auth login, and real-time SSE stream
+  const allowedPrefixes = [
+    "/health",
+    "/api/health",
+    "/api/system/status",
+    "/system/status",
+    "/api/admin",
+    "/api/auth/login",
+    "/api/auth/me",
+    "/api/bids/live",
+    "/uploads",
+  ];
+
+  const isAllowed = allowedPrefixes.some((p) => req.path.startsWith(p));
+  if (isAllowed) {
+    return next();
+  }
+
+  return res.status(503).json({
+    maintenance: true,
+    error: "Service Temporarily Unavailable",
+    message: state.message || "TerraMatch is undergoing scheduled system maintenance.",
+    shutdownAt: state.shutdownAt,
   });
 });
 

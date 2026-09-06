@@ -1,5 +1,41 @@
+import fs from "fs";
+import path from "path";
 import prisma from "../config/prisma.js";
 import { AppError } from "../middlewares/errorHandler.js";
+import { bidEvents } from "../config/events.js";
+
+const STATE_FILE = path.join(process.cwd(), "system_state.json");
+
+function getStoredSystemState() {
+  try {
+    if (fs.existsSync(STATE_FILE)) {
+      const raw = fs.readFileSync(STATE_FILE, "utf-8");
+      return JSON.parse(raw);
+    }
+  } catch (err) {
+    console.warn("Could not read system_state.json:", err.message);
+  }
+  return {
+    isMaintenance: false,
+    shutdownAt: null,
+    shutdownBy: null,
+    message: "TerraMatch is undergoing scheduled system updates and maintenance. All platform operations will resume shortly.",
+  };
+}
+
+function saveSystemState(state) {
+  try {
+    fs.writeFileSync(STATE_FILE, JSON.stringify(state, null, 2), "utf-8");
+  } catch (err) {
+    console.warn("Could not save system_state.json:", err.message);
+  }
+}
+
+let currentSystemState = getStoredSystemState();
+
+export function getSystemStateDirect() {
+  return currentSystemState;
+}
 
 export async function getAdminStats(req, res, next) {
   try {
@@ -675,6 +711,72 @@ export async function markNotificationRead(req, res, next) {
       data: { isRead: true },
     });
     res.json(notification);
+  } catch (error) {
+    next(error);
+  }
+}
+
+// ==========================================
+// SYSTEM PLATFORM STATUS & SHUTDOWN ENDPOINTS
+// ==========================================
+
+export async function getSystemStatus(req, res, next) {
+  try {
+    res.json(currentSystemState);
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function toggleSystemMaintenance(req, res, next) {
+  try {
+    const { isMaintenance, message } = req.body;
+    const newState = isMaintenance !== undefined ? Boolean(isMaintenance) : !currentSystemState.isMaintenance;
+
+    currentSystemState = {
+      isMaintenance: newState,
+      shutdownAt: newState ? new Date().toISOString() : null,
+      shutdownBy: newState ? (req.user?.name || req.user?.email || "Administrator") : null,
+      message:
+        message ||
+        "TerraMatch is currently undergoing scheduled system updates and maintenance. All platform operations will resume shortly.",
+      updatedAt: new Date().toISOString(),
+    };
+
+    saveSystemState(currentSystemState);
+
+    // Record persistent audit log in PostgreSQL
+    try {
+      await prisma.auditLog.create({
+        data: {
+          adminId: req.user.id,
+          action: newState ? "SHUTDOWN_WEBSITE" : "RESTART_WEBSITE",
+          resource: "SystemPlatform",
+          details: newState
+            ? `Admin ${req.user.name} initiated emergency website shutdown. Public access suspended.`
+            : `Admin ${req.user.name} restarted the website. All public operations and bidding resumed.`,
+        },
+      });
+    } catch (auditErr) {
+      console.warn("Audit log creation warning:", auditErr.message);
+    }
+
+    // Broadcast real-time SSE event to all active clients & admin sessions
+    bidEvents.broadcast({
+      type: "SYSTEM_MAINTENANCE_TOGGLED",
+      isMaintenance: currentSystemState.isMaintenance,
+      shutdownAt: currentSystemState.shutdownAt,
+      shutdownBy: currentSystemState.shutdownBy,
+      message: currentSystemState.message,
+      timestamp: new Date().toISOString(),
+    });
+
+    res.json({
+      message: newState
+        ? "Website successfully shut down. Only admin portal remains accessible."
+        : "Website successfully restarted. All public activities and dashboards resumed.",
+      state: currentSystemState,
+    });
   } catch (error) {
     next(error);
   }

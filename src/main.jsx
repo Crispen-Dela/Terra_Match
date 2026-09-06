@@ -6,20 +6,23 @@ import { AuthProvider } from "./context/AuthContext.jsx";
 import { AuctionProvider } from "./context/AuctionContext.jsx";
 import { ListingsProvider } from "./context/ListingsContext.jsx";
 import { MessagesProvider } from "./context/MessagesContext.jsx";
+import { SystemStatusProvider } from "./context/SystemStatusContext.jsx";
 import "./index.css";
 
 ReactDOM.createRoot(document.getElementById("root")).render(
   <React.StrictMode>
     <BrowserRouter>
-      <AuthProvider>
-        <AuctionProvider>
-          <ListingsProvider>
-            <MessagesProvider>
-              <App />
-            </MessagesProvider>
-          </ListingsProvider>
-        </AuctionProvider>
-      </AuthProvider>
+      <SystemStatusProvider>
+        <AuthProvider>
+          <AuctionProvider>
+            <ListingsProvider>
+              <MessagesProvider>
+                <App />
+              </MessagesProvider>
+            </ListingsProvider>
+          </AuctionProvider>
+        </AuthProvider>
+      </SystemStatusProvider>
     </BrowserRouter>
   </React.StrictMode>
 );
