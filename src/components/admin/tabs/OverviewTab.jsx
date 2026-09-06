@@ -17,13 +17,13 @@ export default function OverviewTab({ stats, user }) {
       </div>
 
       {/* KPI Section */}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4 items-stretch">
         
         {/* KPI 1 */}
-        <div className="rounded-xl border border-slate-800 bg-[#111827] p-5 shadow-sm transition-all hover:border-slate-700">
+        <div className="flex h-full flex-col justify-between rounded-xl border border-slate-800 bg-[#111827] p-5 shadow-sm transition-all hover:border-slate-700">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold text-slate-400">Total Users</span>
-            <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-500/10 text-emerald-500">
+            <span className="text-xs font-semibold text-slate-400 break-normal">Total Users</span>
+            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-emerald-500/10 text-emerald-500">
               <UsersIcon className="h-4 w-4" />
             </span>
           </div>
@@ -39,10 +39,10 @@ export default function OverviewTab({ stats, user }) {
         </div>
 
         {/* KPI 2 */}
-        <div className="rounded-xl border border-slate-800 bg-[#111827] p-5 shadow-sm transition-all hover:border-slate-700">
+        <div className="flex h-full flex-col justify-between rounded-xl border border-slate-800 bg-[#111827] p-5 shadow-sm transition-all hover:border-slate-700">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold text-slate-400">Verified Contractors</span>
-            <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-500/10 text-blue-500">
+            <span className="text-xs font-semibold text-slate-400 break-normal">Verified Contractors</span>
+            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-blue-500/10 text-blue-500">
               <ShieldCheckIcon className="h-4 w-4" />
             </span>
           </div>
@@ -57,10 +57,10 @@ export default function OverviewTab({ stats, user }) {
         </div>
 
         {/* KPI 3 */}
-        <div className="rounded-xl border border-slate-800 bg-[#111827] p-5 shadow-sm transition-all hover:border-slate-700">
+        <div className="flex h-full flex-col justify-between rounded-xl border border-slate-800 bg-[#111827] p-5 shadow-sm transition-all hover:border-slate-700">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold text-slate-400">Active Listings</span>
-            <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-indigo-500/10 text-indigo-500">
+            <span className="text-xs font-semibold text-slate-400 break-normal">Active Listings</span>
+            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-indigo-500/10 text-indigo-500">
               <MapIcon className="h-4 w-4" />
             </span>
           </div>
@@ -76,10 +76,10 @@ export default function OverviewTab({ stats, user }) {
         </div>
 
         {/* KPI 4 */}
-        <div className="rounded-xl border border-slate-800 bg-[#111827] p-5 shadow-sm transition-all hover:border-slate-700">
+        <div className="flex h-full flex-col justify-between rounded-xl border border-slate-800 bg-[#111827] p-5 shadow-sm transition-all hover:border-slate-700">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold text-slate-400">Pending Verifications</span>
-            <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-amber-500/10 text-amber-500">
+            <span className="text-xs font-semibold text-slate-400 break-normal">Pending Verifications</span>
+            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-amber-500/10 text-amber-500">
               <GavelIcon className="h-4 w-4" />
             </span>
           </div>

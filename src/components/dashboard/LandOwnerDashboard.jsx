@@ -190,7 +190,7 @@ export default function LandOwnerDashboard({ data, onRefresh }) {
       />
 
       {/* 2. Key Metrics Cards Row */}
-      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4 items-stretch">
         <DashboardStatsCard
           title="LANDS SOLD"
           value={landsSoldCount}

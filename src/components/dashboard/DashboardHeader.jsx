@@ -89,10 +89,10 @@ export default function DashboardHeader({
 
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2.5">
-              <h1 className="truncate text-xl font-extrabold tracking-tight text-white sm:text-2xl lg:text-3xl">
+              <h1 className="text-xl font-extrabold tracking-tight text-white sm:text-2xl lg:text-3xl break-normal">
                 Welcome back, {displayName}
               </h1>
-              <span className="rounded-lg bg-[#184837] px-2.5 py-1 text-[10px] font-extrabold uppercase tracking-wider text-emerald-300 border border-emerald-600/30">
+              <span className="shrink-0 rounded-lg bg-[#184837] px-2.5 py-1 text-[10px] font-extrabold uppercase tracking-wider text-emerald-300 border border-emerald-600/30">
                 {roleLabel}
               </span>
             </div>

@@ -115,7 +115,7 @@ export default function ClientDashboard({ data, onRefresh }) {
       />
 
       {/* 2. Key Metrics */}
-      <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-3 sm:gap-5">
+      <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-3 sm:gap-5 items-stretch">
         <DashboardStatsCard
           title="Active Bids"
           value={stats?.activeBids ?? 0}

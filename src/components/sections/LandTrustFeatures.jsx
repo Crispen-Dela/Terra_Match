@@ -13,8 +13,8 @@ export default function LandTrustFeatures() {
               {feature.icon}
             </span>
             <div>
-              <h3 className="font-semibold text-ink-900">{feature.title}</h3>
-              <p className="mt-0.5 text-sm text-ink-700">
+              <h3 className="font-semibold text-ink-900 break-normal">{feature.title}</h3>
+              <p className="mt-0.5 text-sm text-ink-700 break-normal">
                 {feature.description}
               </p>
             </div>

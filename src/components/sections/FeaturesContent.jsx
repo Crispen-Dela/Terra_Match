@@ -127,24 +127,26 @@ export default function FeaturesContent() {
       </section>
 
       <section className="py-16 sm:py-20">
-        <div className="container-page grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="container-page grid gap-6 sm:grid-cols-2 lg:grid-cols-3 items-stretch">
           {FEATURES.map((feature) => {
             const Icon = feature.icon;
             return (
             <div
               key={feature.title}
-              className="flex flex-col rounded-2xl border border-ink-900/10 bg-white p-6 shadow-card"
+              className="flex h-full flex-col justify-between rounded-2xl border border-ink-900/10 bg-white p-6 shadow-card"
             >
-              <span className="flex h-11 w-11 items-center justify-center rounded-full bg-forest-100 text-forest-700">
-                <Icon className="h-5 w-5" />
-              </span>
-              <h2 className="mt-4 text-base font-bold text-ink-900">{feature.title}</h2>
-              <p className="mt-2 flex-1 text-sm leading-relaxed text-ink-500">
-                {feature.description}
-              </p>
+              <div>
+                <span className="flex h-11 w-11 items-center justify-center rounded-full bg-forest-100 text-forest-700">
+                  <Icon className="h-5 w-5" />
+                </span>
+                <h2 className="mt-4 text-base font-bold text-ink-900 break-normal">{feature.title}</h2>
+                <p className="mt-2 text-sm leading-relaxed text-ink-500 break-normal">
+                  {feature.description}
+                </p>
+              </div>
               <Link
                 to={feature.to}
-                className="mt-4 text-sm font-semibold text-forest-600 hover:text-forest-700"
+                className="mt-4 text-sm font-semibold text-forest-600 hover:text-forest-700 block"
               >
                 {feature.linkLabel} →
               </Link>

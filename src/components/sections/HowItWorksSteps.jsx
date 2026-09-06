@@ -321,7 +321,7 @@ function StepCard({ step }) {
   const Visual = step.Visual;
 
   return (
-    <div className="flex flex-col rounded-2xl border border-ink-900/10 bg-white p-6 shadow-card">
+    <div className="flex h-full flex-col justify-between rounded-2xl border border-ink-900/10 bg-white p-6 shadow-card">
       <div className="flex flex-col items-center text-center">
         <span className="flex h-14 w-14 items-center justify-center rounded-full bg-forest-100 text-forest-700">
           <Icon />
@@ -329,8 +329,8 @@ function StepCard({ step }) {
         <span className="-mt-3 flex h-6 w-6 items-center justify-center rounded-full bg-forest-600 text-xs font-bold text-white ring-2 ring-white">
           {step.number}
         </span>
-        <h3 className="mt-3 text-base font-bold text-ink-900">{step.title}</h3>
-        <p className="mt-2 text-xs leading-relaxed text-ink-500">
+        <h3 className="mt-3 text-base font-bold text-ink-900 break-normal">{step.title}</h3>
+        <p className="mt-2 text-xs leading-relaxed text-ink-500 break-normal">
           {step.description}
         </p>
       </div>

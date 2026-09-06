@@ -8,7 +8,7 @@ export default function ContractorCard({ contractor, reviewsLabel = "" }) {
     contractor;
 
   return (
-    <div className="group overflow-hidden rounded-2xl border border-ink-900/5 bg-white shadow-sm transition-all duration-300 hover:shadow-card">
+    <div className="group flex h-full flex-col justify-between overflow-hidden rounded-2xl border border-ink-900/5 bg-white shadow-sm transition-all duration-300 hover:shadow-card">
       <div className="relative aspect-[4/3] overflow-hidden bg-mist-100">
         <img
           src={image && !image.startsWith("blob:") ? image : "https://images.unsplash.com/photo-1541888946425-d81bb19240f5?w=600"}
@@ -26,26 +26,28 @@ export default function ContractorCard({ contractor, reviewsLabel = "" }) {
         </div>
       </div>
 
-      <div className="p-4">
-        <h3 className="font-bold text-ink-900 transition-colors group-hover:text-forest-600">{name}</h3>
-        
-        <div className="mt-2 flex items-center gap-1.5">
-          <StarRating value={rating} />
-          <span className="text-sm font-semibold text-ink-900">{rating}</span>
-          <span className="text-sm text-ink-500">
-            ({reviews}
-            {reviewsLabel ? ` ${reviewsLabel}` : ""})
-          </span>
-        </div>
+      <div className="flex flex-1 flex-col justify-between p-4">
+        <div>
+          <h3 className="font-bold text-ink-900 transition-colors group-hover:text-forest-600 break-normal">{name}</h3>
+          
+          <div className="mt-2 flex items-center gap-1.5">
+            <StarRating value={rating} />
+            <span className="text-sm font-semibold text-ink-900">{rating}</span>
+            <span className="text-sm text-ink-500">
+              ({reviews}
+              {reviewsLabel ? ` ${reviewsLabel}` : ""})
+            </span>
+          </div>
 
-        <p className="mt-3 text-sm font-medium text-ink-700">
-          {projects} Projects Completed
-        </p>
-        <p className="mt-1 text-sm text-ink-500 line-clamp-1">{specialties}</p>
-        
-        <div className="mt-3 flex items-center gap-1 text-sm text-ink-500">
-          <LocationIcon className="h-3.5 w-3.5 text-ink-400" />
-          <span>{location}</span>
+          <p className="mt-3 text-sm font-medium text-ink-700">
+            {projects} Projects Completed
+          </p>
+          <p className="mt-1 text-sm text-ink-500 line-clamp-1">{specialties}</p>
+          
+          <div className="mt-3 flex items-center gap-1 text-sm text-ink-500">
+            <LocationIcon className="h-3.5 w-3.5 text-ink-400" />
+            <span>{location}</span>
+          </div>
         </div>
 
         <Button

@@ -74,8 +74,9 @@ const TABS = [
  * "this badge" are necessarily the same inbox — see the note in
  * MessagesContext.jsx on startBuyNowRequest).
  */
-export default function MobileTabBar({ active }) {
+export default function MobileTabBar({ active, activeTab }) {
   const { totalUnread } = useMessages();
+  const currentActive = active || activeTab || "home";
 
   return (
     <nav
@@ -84,14 +85,14 @@ export default function MobileTabBar({ active }) {
     >
       <div className="mx-auto flex max-w-3xl items-stretch justify-between px-2">
         {TABS.map((tab) => {
-          const isActive = tab.id === active;
+          const isActive = tab.id === currentActive || (currentActive === "dashboard" && tab.id === "home");
           const showBadge = tab.id === "messages" && totalUnread > 0;
           return (
             <Link
               key={tab.id}
               to={tab.to}
               aria-current={isActive ? "page" : undefined}
-              className="flex flex-1 flex-col items-center gap-1 py-2.5 text-[11px] font-medium"
+              className="flex flex-1 flex-col items-center justify-center gap-1 py-2 text-[11px] font-medium transition-colors"
             >
               <span className="relative">
                 <tab.Icon
@@ -106,7 +107,9 @@ export default function MobileTabBar({ active }) {
                   </span>
                 )}
               </span>
-              <span className={isActive ? "text-forest-600" : "text-ink-500"}>{tab.label}</span>
+              <span className={cn("whitespace-nowrap text-center leading-none", isActive ? "text-forest-600 font-bold" : "text-ink-500")}>
+                {tab.label}
+              </span>
             </Link>
           );
         })}

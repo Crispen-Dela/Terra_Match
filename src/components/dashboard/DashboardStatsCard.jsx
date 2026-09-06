@@ -14,24 +14,18 @@ export default function DashboardStatsCard({
   const content = (
     <div
       className={cn(
-        "group relative flex flex-col justify-between rounded-2xl border border-slate-200/80 bg-white p-5 shadow-xs transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md",
+        "group relative flex flex-col justify-between h-full min-h-[145px] rounded-2xl border border-slate-200/80 bg-white p-5 shadow-xs transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md",
         to && "cursor-pointer",
         className
       )}
     >
-      <div className="flex items-start justify-between gap-2">
-        <div className="flex items-center gap-2.5 sm:gap-3 min-w-0 flex-1">
-          {Icon && (
-            <div className="flex h-10 w-10 sm:h-11 sm:w-11 shrink-0 items-center justify-center rounded-xl bg-emerald-50 text-[#059669] transition group-hover:bg-emerald-100">
-              <Icon className="h-5 w-5 sm:h-5.5 sm:w-5.5" />
-            </div>
-          )}
-          <div className="min-w-0 flex-1">
-            <span className="block text-[11px] sm:text-xs font-black uppercase tracking-wider text-slate-500 leading-snug break-words">
-              {title}
-            </span>
+      {/* Top row: Icon on left, Badge on right (never squishing title width horizontally) */}
+      <div className="flex items-center justify-between gap-2">
+        {Icon ? (
+          <div className="flex h-10 w-10 sm:h-11 sm:w-11 shrink-0 items-center justify-center rounded-xl bg-emerald-50 text-[#059669] transition group-hover:bg-emerald-100">
+            <Icon className="h-5 w-5 sm:h-5.5 sm:w-5.5" />
           </div>
-        </div>
+        ) : <div />}
 
         {badgeText && (
           <span
@@ -47,15 +41,22 @@ export default function DashboardStatsCard({
         )}
       </div>
 
-      <div className="mt-3 truncate text-2xl font-black text-slate-900 sm:text-3xl">
-        {value}
+      {/* Middle content: Title with full card width and natural word-break + Value */}
+      <div className="mt-3.5 flex-1 min-w-0">
+        <span className="block text-[11px] sm:text-xs font-black uppercase tracking-wider text-slate-500 leading-snug break-normal">
+          {title}
+        </span>
+        <div className="mt-1.5 truncate text-2xl font-black text-slate-900 sm:text-3xl">
+          {value}
+        </div>
       </div>
 
+      {/* Bottom row: Subtitle / Link */}
       {subtitle && (
-        <div className="mt-3 flex items-center justify-between border-t border-slate-100 pt-2.5 text-xs font-semibold text-slate-500">
+        <div className="mt-3.5 flex items-center justify-between border-t border-slate-100 pt-2.5 text-xs font-semibold text-slate-500">
           <span className="truncate">{subtitle}</span>
           {to && (
-            <span className="ml-1 font-bold text-[#059669] transition group-hover:translate-x-1">
+            <span className="ml-1 font-bold text-[#059669] transition group-hover:translate-x-1 shrink-0">
               &rarr;
             </span>
           )}
@@ -65,7 +66,11 @@ export default function DashboardStatsCard({
   );
 
   if (to) {
-    return <Link to={to}>{content}</Link>;
+    return (
+      <Link to={to} className="block h-full no-underline">
+        {content}
+      </Link>
+    );
   }
 
   return content;

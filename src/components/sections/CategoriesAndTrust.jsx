@@ -49,13 +49,13 @@ export default function CategoriesAndTrust({ category, onCategoryChange }) {
             Why Choose Verified Contractors?
           </h2>
 
-          <div className="mt-6 grid gap-4 sm:grid-cols-2">
+          <div className="mt-6 grid gap-4 sm:grid-cols-2 items-stretch">
             {CONTRACTOR_TRUST_FEATURES.map((feature, i) => {
               const Icon = TRUST_ICONS[i % TRUST_ICONS.length];
               return (
                 <div
                   key={feature.title}
-                  className="rounded-xl bg-mist-50 p-6 border border-ink-900/5 hover:border-forest-200 transition-colors"
+                  className="flex h-full flex-col justify-start rounded-xl bg-mist-50 p-6 border border-ink-900/5 hover:border-forest-200 transition-colors"
                 >
                   <div
                     className="flex h-12 w-12 items-center justify-center rounded-xl bg-white shadow-sm text-forest-600"
@@ -63,10 +63,10 @@ export default function CategoriesAndTrust({ category, onCategoryChange }) {
                   >
                     <Icon className="h-6 w-6" />
                   </div>
-                  <h3 className="mt-5 font-bold text-ink-900">
+                  <h3 className="mt-5 font-bold text-ink-900 break-normal">
                     {feature.title}
                   </h3>
-                  <p className="mt-2 text-[14px] leading-relaxed text-ink-600">
+                  <p className="mt-2 text-[14px] leading-relaxed text-ink-600 break-normal">
                     {feature.description}
                   </p>
                 </div>

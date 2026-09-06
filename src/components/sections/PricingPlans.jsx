@@ -110,7 +110,7 @@ function PricingCard({ plan, cycle }) {
   return (
     <div
       className={cn(
-        "flex flex-col overflow-hidden rounded-2xl border transition-transform duration-300",
+        "flex h-full flex-col justify-between overflow-hidden rounded-2xl border transition-transform duration-300",
         plan.highlight
           ? "border-forest-600 bg-forest-50/60 shadow-card lg:-translate-y-2"
           : "border-ink-900/10 bg-white"
@@ -122,41 +122,43 @@ function PricingCard({ plan, cycle }) {
         </div>
       )}
 
-      <div className="flex flex-1 flex-col p-8">
-        <div className="flex items-center gap-2">
-          <h3 className="text-xl font-bold text-ink-900">{plan.name}</h3>
-          {!plan.highlight && plan.badge && (
-            <Badge tone="soft" className="px-2.5 py-0.5 text-xs">
-              {plan.badge}
-            </Badge>
-          )}
-        </div>
-        <p className="mt-2 text-sm leading-relaxed text-ink-500">
-          {plan.tagline}
-        </p>
+      <div className="flex flex-1 flex-col justify-between p-8">
+        <div>
+          <div className="flex items-center gap-2">
+            <h3 className="text-xl font-bold text-ink-900 break-normal">{plan.name}</h3>
+            {!plan.highlight && plan.badge && (
+              <Badge tone="soft" className="px-2.5 py-0.5 text-xs shrink-0">
+                {plan.badge}
+              </Badge>
+            )}
+          </div>
+          <p className="mt-2 text-sm leading-relaxed text-ink-500 break-normal">
+            {plan.tagline}
+          </p>
 
-        <div className="mt-6 flex items-baseline gap-1.5">
-          {isCustom ? (
-            <span className="text-3xl font-extrabold text-ink-900">Custom</span>
-          ) : (
-            <>
-              <span className="text-3xl font-extrabold text-ink-900">
-                GHS {price}
-              </span>
-              <span className="text-sm font-medium text-ink-500">/ month</span>
-            </>
-          )}
-        </div>
+          <div className="mt-6 flex items-baseline gap-1.5">
+            {isCustom ? (
+              <span className="text-3xl font-extrabold text-ink-900">Custom</span>
+            ) : (
+              <>
+                <span className="text-3xl font-extrabold text-ink-900">
+                  GHS {price}
+                </span>
+                <span className="text-sm font-medium text-ink-500">/ month</span>
+              </>
+            )}
+          </div>
 
-        <Button
-          as={Link}
-          to={ctaTo}
-          variant={plan.ctaVariant}
-          size="md"
-          className="mt-6 w-full"
-        >
-          {plan.cta}
-        </Button>
+          <Button
+            as={Link}
+            to={ctaTo}
+            variant={plan.ctaVariant}
+            size="md"
+            className="mt-6 w-full"
+          >
+            {plan.cta}
+          </Button>
+        </div>
 
         <div className="mt-8 border-t border-ink-900/10 pt-6">
           {plan.featuresIntro && (
@@ -251,7 +253,7 @@ export default function PricingPlans() {
         </div>
       </div>
 
-      <div className="mt-16 grid gap-6 lg:grid-cols-4 lg:items-start">
+      <div className="mt-16 grid gap-6 lg:grid-cols-4 lg:items-stretch">
         {PRICING_PLANS.map((plan) => (
           <PricingCard key={plan.id} plan={plan} cycle={cycle} />
         ))}

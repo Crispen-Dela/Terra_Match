@@ -117,7 +117,7 @@ export default function ContractorDashboard({ data, onRefresh }) {
 
 
       {/* 2. Key Performance Metrics */}
-      <div className="grid grid-cols-2 gap-3.5 sm:gap-5 lg:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3.5 sm:gap-5 lg:grid-cols-4 items-stretch">
         <DashboardStatsCard
           title="Active Bids"
           value={stats?.activeBids ?? 0}

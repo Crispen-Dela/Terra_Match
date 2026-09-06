@@ -15,7 +15,7 @@ export default function StatsRow() {
               <p className="text-3xl font-extrabold text-emerald-900 tracking-tight">
                 {stat.value}
               </p>
-              <p className="mt-2 text-xs font-bold uppercase tracking-widest text-slate-500">
+              <p className="mt-2 text-xs font-bold uppercase tracking-widest text-slate-500 break-normal">
                 {stat.label}
               </p>
             </div>
