@@ -67,6 +67,16 @@ export function AuthProvider({ children }) {
     setUser(null);
     setFirebaseUser(null);
     setStoredToken(null);
+
+    // Clean up any legacy or user-scoped AI chat localStorage keys
+    try {
+      localStorage.removeItem("terramatch_ai_history");
+      Object.keys(localStorage).forEach((key) => {
+        if (key.startsWith("terramatch_ai_") || key.startsWith("ai_history_")) {
+          localStorage.removeItem(key);
+        }
+      });
+    } catch {}
   }, []);
 
   // Single source of truth: Firebase Auth state listener.

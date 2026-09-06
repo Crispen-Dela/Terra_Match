@@ -1,6 +1,7 @@
 import prisma from "../config/prisma.js";
 import { formatContractorResponse } from "./contractorController.js";
 import { GoogleGenAI } from "@google/genai";
+import { AppError } from "../middlewares/errorHandler.js";
 
 // Initialize Google GenAI client
 const apiKey = process.env.GEMINI_API_KEY || "";
@@ -300,7 +301,7 @@ export async function recommendContractors(req, res, next) {
 
 export async function aiChatAssistant(req, res, next) {
   try {
-    const { brief = {}, history = [], userMessage = "", attachments = [] } = req.body;
+    const { brief = {}, history = [], userMessage = "", attachments = [], conversationId } = req.body;
 
     // Build structured context
     const inferredCategory = inferCategoryFromQuery(userMessage);
@@ -361,10 +362,8 @@ Always include a clean JSON code block at the very end of your response formatte
 
     if (ai) {
       try {
-        // Build contents array supporting text and multimodal inline images
         const contents = [];
 
-        // Add history turns if present
         if (Array.isArray(history) && history.length > 0) {
           for (const item of history) {
             const role = item.sender === "me" || item.sender === "user" ? "user" : "model";
@@ -375,7 +374,6 @@ Always include a clean JSON code block at the very end of your response formatte
           }
         }
 
-        // Current turn parts
         const currentParts = [];
         let promptWithBrief = userMessage || "Hello, please provide guidance on land and construction in Ghana.";
         if (Object.keys(effectiveBrief).length > 0) {
@@ -383,7 +381,6 @@ Always include a clean JSON code block at the very end of your response formatte
         }
         currentParts.push({ text: promptWithBrief });
 
-        // Add attachment image parts if provided
         if (Array.isArray(attachments) && attachments.length > 0) {
           for (const att of attachments) {
             if (att.base64 && att.mimeType) {
@@ -402,7 +399,6 @@ Always include a clean JSON code block at the very end of your response formatte
           parts: currentParts,
         });
 
-        // Generate content trying latest available Gemini models
         const modelsToTry = ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash", "gemini-1.5-pro"];
         for (const model of modelsToTry) {
           try {
@@ -418,9 +414,7 @@ Always include a clean JSON code block at the very end of your response formatte
               responseText = response.text;
               break;
             }
-          } catch (mErr) {
-            // continue to fallback model
-          }
+          } catch (mErr) {}
         }
       } catch (geminiError) {
         console.warn("Gemini API call failed, using intelligent fallback:", geminiError?.message || geminiError);
@@ -428,31 +422,21 @@ Always include a clean JSON code block at the very end of your response formatte
     }
 
     const qTrimmed = userMessage.trim().toLowerCase();
-
-    // Check if message starts with or contains a greeting
     const startsWithGreeting = /^(hello|hi|hey|good morning|good afternoon|good evening|greetings|howdy|yo|sup|help)\b/i.test(qTrimmed);
 
-    // Strip greeting prefix from the beginning
     const queryWithoutGreeting = qTrimmed
       .replace(/^(hello|hi|hey|good morning|good afternoon|good evening|greetings|howdy|yo|sup|help)\b[,\s!.-]*/i, "")
       .trim();
 
-    // Pure pleasantry check (e.g., "good", "thanks", "ok", "great", "cool", "fine")
     const isGenericPleasantry =
       /^(good|great|thanks|thank you|ok|okay|nice|awesome|cool|alright|perfect|sounds good|noted|understood|well done|good job|fine|yes|no)\b[!\.\s]*$/i.test(qTrimmed) ||
       ["good", "great", "thanks", "thank you", "ok", "okay", "nice", "awesome", "cool", "alright", "perfect", "fine", "yes", "no"].includes(qTrimmed);
 
-    // Project / Contractor / House / Construction intent check
     const hasContractorOrProjectIntent =
       qTrimmed.includes("contractor") ||
       qTrimmed.includes("builder") ||
       qTrimmed.includes("build") ||
       qTrimmed.includes("artisan") ||
-      qTrimmed.includes("hire") ||
-      qTrimmed.includes("storey") ||
-      qTrimmed.includes("house") ||
-      qTrimmed.includes("home") ||
-      qTrimmed.includes("building") ||
       qTrimmed.includes("construction") ||
       qTrimmed.includes("construct") ||
       qTrimmed.includes("renovat") ||
@@ -675,6 +659,82 @@ Always include a clean JSON code block at the very end of your response formatte
         .slice(0, 3);
     }
 
+    let savedConversationId = null;
+    let userMessageRecord = null;
+    let aiMessageRecord = null;
+
+    // PERSISTENCE RULE:
+    // Only save when user is AUTHENTICATED (req.user exists).
+    // Zero persistence for unauthenticated/guest users.
+    if (req.user) {
+      let conv = null;
+      if (conversationId) {
+        conv = await prisma.aiConversation.findFirst({
+          where: { id: conversationId, userId: req.user.id },
+        });
+      }
+
+      if (!conv) {
+        const autoTitle = userMessage
+          ? (userMessage.length > 40 ? userMessage.slice(0, 37).trim() + "..." : userMessage.trim())
+          : "New Conversation";
+        conv = await prisma.aiConversation.create({
+          data: {
+            userId: req.user.id,
+            title: autoTitle || "New Conversation",
+          },
+        });
+      } else if (conv.title === "New Conversation" && userMessage) {
+        const updatedTitle = userMessage.length > 40 ? userMessage.slice(0, 37).trim() + "..." : userMessage.trim();
+        await prisma.aiConversation.update({
+          where: { id: conv.id },
+          data: { title: updatedTitle },
+        });
+      }
+
+      savedConversationId = conv.id;
+
+      // Persist user turn
+      if (userMessage || (Array.isArray(attachments) && attachments.length > 0)) {
+        userMessageRecord = await prisma.aiMessage.create({
+          data: {
+            conversationId: conv.id,
+            role: "user",
+            content: userMessage || "",
+            metadata: {
+              attachments: Array.isArray(attachments) ? attachments.map((a) => a.name || "Attachment") : [],
+            },
+          },
+        });
+      }
+
+      // Persist AI turn
+      aiMessageRecord = await prisma.aiMessage.create({
+        data: {
+          conversationId: conv.id,
+          role: "ai",
+          content: replyMarkdown,
+          metadata: {
+            matches: returnedMatches,
+            quickReplies: parsedJson?.quickReplies || [
+              "Estimate Construction Cost",
+              "Check Land Due Diligence",
+              "Inspect Flood & Soil Risk",
+              "Find Verified Contractors",
+            ],
+            projectBrief: dbBrief.title ? dbBrief : null,
+            interactiveWidget: activeWidget,
+          },
+        },
+      });
+
+      // Update conversation updatedAt timestamp
+      await prisma.aiConversation.update({
+        where: { id: conv.id },
+        data: { updatedAt: new Date() },
+      });
+    }
+
     res.json({
       reply: replyMarkdown,
       matches: returnedMatches,
@@ -687,7 +747,155 @@ Always include a clean JSON code block at the very end of your response formatte
         "Inspect Flood & Soil Risk",
         "Find Verified Contractors",
       ],
+      conversationId: savedConversationId,
+      userMessageId: userMessageRecord?.id || null,
+      aiMessageId: aiMessageRecord?.id || null,
     });
+  } catch (error) {
+    next(error);
+  }
+}
+
+/**
+ * GET /api/ai/conversations
+ * Retrieve only the authenticated user's AI conversations.
+ */
+export async function getUserAiConversations(req, res, next) {
+  try {
+    if (!req.user) {
+      return next(new AppError("Authentication required.", 401));
+    }
+
+    const conversations = await prisma.aiConversation.findMany({
+      where: { userId: req.user.id },
+      orderBy: { updatedAt: "desc" },
+      include: {
+        messages: {
+          orderBy: { createdAt: "desc" },
+          take: 1,
+        },
+        _count: {
+          select: { messages: true },
+        },
+      },
+    });
+
+    const formatted = conversations.map((c) => ({
+      id: c.id,
+      title: c.title,
+      createdAt: c.createdAt,
+      updatedAt: c.updatedAt,
+      messageCount: c._count.messages,
+      lastMessage: c.messages[0]
+        ? {
+            content: c.messages[0].content,
+            role: c.messages[0].role,
+            createdAt: c.messages[0].createdAt,
+          }
+        : null,
+    }));
+
+    res.json(formatted);
+  } catch (error) {
+    next(error);
+  }
+}
+
+/**
+ * GET /api/ai/conversations/:id
+ * Retrieve a specific AI conversation and all its messages.
+ * STRICT OWNERSHIP ENFORCEMENT: conversation must belong to req.user.id.
+ */
+export async function getAiConversationById(req, res, next) {
+  try {
+    if (!req.user) {
+      return next(new AppError("Authentication required.", 401));
+    }
+
+    const { id } = req.params;
+    const conversation = await prisma.aiConversation.findFirst({
+      where: { id, userId: req.user.id },
+      include: {
+        messages: {
+          orderBy: { createdAt: "asc" },
+        },
+      },
+    });
+
+    if (!conversation) {
+      return next(new AppError("AI Conversation not found or access denied.", 404));
+    }
+
+    res.json(conversation);
+  } catch (error) {
+    next(error);
+  }
+}
+
+/**
+ * POST /api/ai/conversations
+ * Create a new AI conversation for the authenticated user.
+ */
+export async function createAiConversation(req, res, next) {
+  try {
+    if (!req.user) {
+      return next(new AppError("Authentication required.", 401));
+    }
+
+    const { title } = req.body;
+    const conversation = await prisma.aiConversation.create({
+      data: {
+        userId: req.user.id,
+        title: title?.trim() || "New Conversation",
+      },
+    });
+
+    res.status(201).json(conversation);
+  } catch (error) {
+    next(error);
+  }
+}
+
+/**
+ * DELETE /api/ai/conversations/:id
+ * Delete a specific AI conversation owned by the authenticated user.
+ */
+export async function deleteAiConversation(req, res, next) {
+  try {
+    if (!req.user) {
+      return next(new AppError("Authentication required.", 401));
+    }
+
+    const { id } = req.params;
+    const deleted = await prisma.aiConversation.deleteMany({
+      where: { id, userId: req.user.id },
+    });
+
+    if (deleted.count === 0) {
+      return next(new AppError("AI Conversation not found or access denied.", 404));
+    }
+
+    res.json({ message: "Conversation deleted successfully." });
+  } catch (error) {
+    next(error);
+  }
+}
+
+/**
+ * DELETE /api/ai/conversations
+ * Delete all AI conversations owned by the authenticated user.
+ */
+export async function clearAllUserAiConversations(req, res, next) {
+  try {
+    if (!req.user) {
+      return next(new AppError("Authentication required.", 401));
+    }
+
+    await prisma.aiConversation.deleteMany({
+      where: { userId: req.user.id },
+    });
+
+    res.json({ message: "All AI conversations cleared successfully." });
   } catch (error) {
     next(error);
   }

@@ -128,6 +128,7 @@ model User {
   auditLogs          AuditLog[]         @relation("AdminAuditLogs")
   supportTickets     SupportTicket[]    @relation("UserSupportTickets")
   supportReplies     SupportReply[]     @relation("UserSupportReplies")
+  aiConversations    AiConversation[]   @relation("UserAiConversations")
 
   @@index([email])
   @@index([role])
@@ -401,4 +402,32 @@ model SupportReply {
   @@index([ticketId])
   @@index([senderId])
 }
+
+model AiConversation {
+  id        String      @id @default(uuid())
+  userId    String
+  user      User        @relation("UserAiConversations", fields: [userId], references: [id], onDelete: Cascade)
+  title     String      @default("New Conversation")
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @updatedAt
+
+  messages  AiMessage[]
+
+  @@index([userId])
+  @@index([updatedAt])
+}
+
+model AiMessage {
+  id             String         @id @default(uuid())
+  conversationId String
+  conversation   AiConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  role           String         // "user" or "ai"
+  content        String
+  metadata       Json?          // { matches, projectBrief, interactiveWidget, quickReplies, attachments }
+  createdAt      DateTime       @default(now())
+
+  @@index([conversationId])
+  @@index([createdAt])
+}
+
 

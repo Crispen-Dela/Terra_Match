@@ -45,6 +45,7 @@ import {
 } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 import { api, getStoredToken } from "../services/api";
+import { aiApi } from "../services/aiApi";
 import {
   CostEstimatorWidget,
   LandDueDiligenceWidget,
@@ -96,7 +97,7 @@ function SafeMarkdown({ content }) {
 }
 
 export default function AiDashboard() {
-  const { user, logout, isAuthed } = useAuth();
+  const { user, logout, isAuthed, isLoading: authLoading } = useAuth();
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState("chat");
 
@@ -104,6 +105,7 @@ export default function AiDashboard() {
   const [messages, setMessages] = useState([]);
   const [inputValue, setInputValue] = useState("");
   const [isThinking, setIsThinking] = useState(false);
+  const [activeConversationId, setActiveConversationId] = useState(null);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [moreOptionsOpen, setMoreOptionsOpen] = useState(false);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
@@ -129,6 +131,7 @@ export default function AiDashboard() {
   const [savedConversations, setSavedConversations] = useState([]);
   const [landAnalysisResult, setLandAnalysisResult] = useState(null);
   const [loadingTabData, setLoadingTabData] = useState(false);
+  const [loadingSavedConversations, setLoadingSavedConversations] = useState(false);
   const [contractorSearch, setContractorSearch] = useState("");
 
   const messagesEndRef = useRef(null);
@@ -311,19 +314,19 @@ export default function AiDashboard() {
     }
   }, [activeTab, bidsList.length]);
 
-  // Load real saved conversations from database
+  // Load real saved conversations from database when activeTab is saved-chats and user is authenticated
   useEffect(() => {
-    if (activeTab === "saved-chats") {
+    if (activeTab === "saved-chats" && isAuthed && user?.id) {
       setLoadingTabData(true);
-      api
-        .get("/api/conversations")
+      aiApi
+        .getConversations()
         .then((res) => {
           if (Array.isArray(res)) setSavedConversations(res);
         })
         .catch((err) => console.warn("Error fetching saved conversations:", err))
         .finally(() => setLoadingTabData(false));
     }
-  }, [activeTab]);
+  }, [activeTab, isAuthed, user?.id]);
 
   // Run land analysis via backend API
   const handleRunLandAnalysis = async (region = "Greater Accra") => {
@@ -339,6 +342,9 @@ export default function AiDashboard() {
   };
 
   const handleLogout = async () => {
+    setMessages([]);
+    setSavedConversations([]);
+    setActiveConversationId(null);
     await logout();
     navigate("/login");
   };
@@ -357,39 +363,41 @@ export default function AiDashboard() {
     ? user.role.replace(/_/g, " ").replace(/\b\w/g, (l) => l.toUpperCase())
     : "Member";
 
-  // Load chat history from localStorage on initial render with strict sanitation
+  // Authentication & Conversation Synchronization
+  // STATE 1 - LOGGED OUT: zero saved history, empty state, zero persistence
+  // STATE 2 - LOGGED IN: load only authenticated user's conversations from DB
   useEffect(() => {
-    try {
-      const savedHistory = localStorage.getItem("terramatch_ai_history");
-      if (savedHistory) {
-        const parsed = JSON.parse(savedHistory);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          const sanitized = parsed.filter(
-            (m) => m && typeof m === "object" && m.sender && typeof m.content === "string"
-          );
-          if (sanitized.length > 0) {
-            setMessages(sanitized);
-          }
-        }
-      }
-    } catch (e) {
-      console.warn("Failed to restore AI chat history:", e);
-      try {
-        localStorage.removeItem("terramatch_ai_history");
-      } catch (_) {}
-    }
-  }, []);
+    if (authLoading) return;
 
-  // Save chat history to localStorage whenever messages update
-  useEffect(() => {
-    if (messages.length > 0) {
-      try {
-        localStorage.setItem("terramatch_ai_history", JSON.stringify(messages));
-      } catch (e) {
-        console.warn("Failed to persist AI chat history:", e);
-      }
+    if (!isAuthed || !user?.id) {
+      // Logged-out state: strict zero saved history
+      setMessages([]);
+      setSavedConversations([]);
+      setActiveConversationId(null);
+      return;
     }
-  }, [messages]);
+
+    // Logged-in state: load this authenticated user's AI conversations from database
+    let isMounted = true;
+    setLoadingSavedConversations(true);
+
+    aiApi
+      .getConversations()
+      .then((res) => {
+        if (!isMounted) return;
+        setSavedConversations(Array.isArray(res) ? res : []);
+      })
+      .catch((err) => {
+        if (isMounted) console.warn("Failed to fetch user AI conversations:", err);
+      })
+      .finally(() => {
+        if (isMounted) setLoadingSavedConversations(false);
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [isAuthed, user?.id, authLoading]);
 
   // Handle Real File Upload via API & Base64 Multimodal encoding
   const handleFileUpload = async (e) => {
@@ -503,9 +511,10 @@ export default function AiDashboard() {
         text: m.content,
       }));
 
-      const res = await api.post("/api/ai/chat", {
+      const res = await aiApi.sendChat({
         userMessage: fullContent,
         history: historyFormatted,
+        conversationId: isAuthed ? activeConversationId : null,
         attachments: currentAttachments.map((f) => ({
           name: f.name,
           base64: f.base64,
@@ -518,10 +527,21 @@ export default function AiDashboard() {
         return;
       }
 
+      if (isAuthed && res.conversationId) {
+        setActiveConversationId(res.conversationId);
+        // Silently refresh conversation list in background to update title & timestamp
+        aiApi
+          .getConversations()
+          .then((convs) => {
+            if (Array.isArray(convs)) setSavedConversations(convs);
+          })
+          .catch(() => {});
+      }
+
       const aiReplyTime = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 
       const aiResponse = {
-        id: Date.now() + 1,
+        id: res.aiMessageId || Date.now() + 1,
         sender: "ai",
         content: typeof res.reply === "string" ? res.reply : "I am processing your request for land and construction insights in Ghana.",
         matches: Array.isArray(res.matches) ? res.matches : [],
@@ -566,32 +586,53 @@ export default function AiDashboard() {
 
   const handleClearConversation = () => {
     setMessages([]);
+    setActiveConversationId(null);
     setErrorMessage("");
     setAttachedFiles([]);
-    try {
-      localStorage.removeItem("terramatch_ai_history");
-    } catch (e) {}
   };
 
   // Load a real saved conversation thread into chat stream
   const handleLoadSavedConversation = async (convId) => {
+    if (!isAuthed || !convId) return;
     setLoadingTabData(true);
     try {
-      const conv = await api.get(`/api/conversations/${convId}`);
-      if (conv && conv.messages) {
+      const conv = await aiApi.getConversation(convId);
+      if (conv && Array.isArray(conv.messages)) {
         const loadedMessages = conv.messages.map((m) => ({
           id: m.id,
-          sender: m.senderId === user?.id ? "user" : "ai",
-          content: m.body || "",
+          sender: m.role === "user" ? "user" : "ai",
+          content: m.content || "",
           time: new Date(m.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+          matches: m.metadata?.matches || [],
+          quickReplies: m.metadata?.quickReplies || DEFAULT_QUICK_REPLIES,
+          projectBrief: m.metadata?.projectBrief || null,
+          interactiveWidget: m.metadata?.interactiveWidget || null,
+          attachments: m.metadata?.attachments || [],
         }));
         setMessages(loadedMessages);
+        setActiveConversationId(conv.id);
         setActiveTab("chat");
       }
     } catch (err) {
       console.warn("Error loading conversation:", err);
     } finally {
       setLoadingTabData(false);
+    }
+  };
+
+  // Delete a saved conversation
+  const handleDeleteSavedConversation = async (e, convId) => {
+    e?.stopPropagation();
+    if (!isAuthed || !convId) return;
+    try {
+      await aiApi.deleteConversation(convId);
+      setSavedConversations((prev) => prev.filter((c) => c.id !== convId));
+      if (activeConversationId === convId) {
+        setMessages([]);
+        setActiveConversationId(null);
+      }
+    } catch (err) {
+      console.warn("Failed to delete conversation:", err);
     }
   };
 
@@ -1625,27 +1666,56 @@ export default function AiDashboard() {
             <div className="max-w-3xl mx-auto space-y-6">
               <div className="flex items-center justify-between">
                 <div>
-                  <h3 className="font-extrabold text-slate-900 text-lg">Saved Conversations</h3>
-                  <p className="text-xs text-slate-500">Your conversation threads stored in TerraMatch database</p>
+                  <h3 className="font-extrabold text-slate-900 text-lg">Saved AI Conversations</h3>
+                  <p className="text-xs text-slate-500">Your private AI conversation history stored in TerraMatch</p>
                 </div>
                 <button
                   type="button"
-                  onClick={() => setActiveTab("chat")}
-                  className="rounded-xl bg-[#059669] px-4 py-2 text-xs font-bold text-white hover:bg-[#047857]"
+                  onClick={() => {
+                    handleClearConversation();
+                    setActiveTab("chat");
+                  }}
+                  className="rounded-xl bg-[#059669] px-4 py-2 text-xs font-bold text-white hover:bg-[#047857] shadow-xs"
                 >
                   + New Chat
                 </button>
               </div>
 
-              {loadingTabData ? (
-                <p className="text-xs text-slate-500">Loading saved chats from database...</p>
+              {!isAuthed ? (
+                <div className="rounded-2xl border border-slate-200 bg-white p-8 text-center">
+                  <Bookmark className="h-8 w-8 text-[#059669] mx-auto mb-2" />
+                  <p className="text-sm font-bold text-slate-800">Sign in to view your saved AI history</p>
+                  <p className="text-xs text-slate-500 mt-1 max-w-md mx-auto">
+                    Logged-out sessions are temporary and zero saved history is retained. Sign in to save, organize, and resume your TerraBot conversations.
+                  </p>
+                  <Link
+                    to="/login"
+                    className="mt-4 inline-block rounded-xl bg-[#059669] px-5 py-2 text-xs font-bold text-white hover:bg-[#047857]"
+                  >
+                    Sign In to TerraMatch
+                  </Link>
+                </div>
+              ) : loadingTabData || loadingSavedConversations ? (
+                <div className="rounded-2xl border border-slate-200 bg-white p-8 text-center">
+                  <p className="text-xs text-slate-500">Loading your saved conversations...</p>
+                </div>
               ) : savedConversations.length === 0 ? (
                 <div className="rounded-2xl border border-slate-200 bg-white p-8 text-center">
                   <Bookmark className="h-8 w-8 text-[#059669] mx-auto mb-2" />
                   <p className="text-sm font-bold text-slate-800">No saved conversation threads yet</p>
                   <p className="text-xs text-slate-500 mt-1">
-                    Start chatting with TerraBot or sellers to save your conversation history.
+                    Start chatting with TerraBot to save and resume your land diligence and construction questions.
                   </p>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      handleClearConversation();
+                      setActiveTab("chat");
+                    }}
+                    className="mt-4 inline-block rounded-xl bg-[#059669] px-4 py-2 text-xs font-bold text-white hover:bg-[#047857]"
+                  >
+                    Start First Conversation
+                  </button>
                 </div>
               ) : (
                 <div className="space-y-3">
@@ -1653,19 +1723,37 @@ export default function AiDashboard() {
                     <div
                       key={c.id}
                       onClick={() => handleLoadSavedConversation(c.id)}
-                      className="flex items-center justify-between rounded-2xl border border-slate-200 bg-white p-4 shadow-xs cursor-pointer transition hover:border-[#059669] hover:shadow-sm"
+                      className={`flex items-center justify-between rounded-2xl border p-4 shadow-xs cursor-pointer transition ${
+                        activeConversationId === c.id
+                          ? "border-[#059669] bg-emerald-50/50"
+                          : "border-slate-200 bg-white hover:border-[#059669] hover:shadow-sm"
+                      }`}
                     >
-                      <div>
-                        <h4 className="font-bold text-slate-900 text-sm">
-                          {c.landTitle || `Conversation with ${c.otherPartyName}`}
+                      <div className="min-w-0 flex-1 pr-3">
+                        <h4 className="font-bold text-slate-900 text-sm truncate">
+                          {c.title || "New Conversation"}
                         </h4>
-                        <p className="text-xs text-slate-500 line-clamp-1">{c.lastMessageText || "No messages yet"}</p>
+                        <p className="text-xs text-slate-500 line-clamp-1 mt-0.5">
+                          {c.lastMessage?.content || "No messages yet"}
+                        </p>
+                        <div className="flex items-center gap-3 mt-1.5 text-[10px] text-slate-400">
+                          <span className="flex items-center gap-1">
+                            <Clock className="h-3 w-3" />
+                            {new Date(c.updatedAt).toLocaleDateString()}
+                          </span>
+                          <span>•</span>
+                          <span>{c.messageCount || 0} messages</span>
+                        </div>
                       </div>
-                      <div className="text-right">
-                        <span className="text-[10px] text-slate-400 flex items-center gap-1">
-                          <Clock className="h-3 w-3" />
-                          {new Date(c.lastMessageAt).toLocaleDateString()}
-                        </span>
+                      <div className="flex items-center gap-2 shrink-0">
+                        <button
+                          type="button"
+                          onClick={(e) => handleDeleteSavedConversation(e, c.id)}
+                          title="Delete Conversation"
+                          className="rounded-xl p-2 text-slate-400 hover:bg-red-50 hover:text-red-600 transition"
+                        >
+                          <X className="h-4 w-4" />
+                        </button>
                       </div>
                     </div>
                   ))}
