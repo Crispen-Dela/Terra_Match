@@ -32,9 +32,9 @@ export default function ContractorHero({
   }
 
   return (
-    <section className="relative overflow-hidden">
+    <section className="relative z-20">
       {/* Real construction site hero photo */}
-      <div className="absolute inset-0 h-full w-full">
+      <div className="absolute inset-0 h-full w-full overflow-hidden pointer-events-none">
         <img 
           src={unsplashUrl(CONTRACTOR_PHOTO_IDS.constructionHero, { w: 1600 })} 
           alt="Contractors at work" 
@@ -56,7 +56,7 @@ export default function ContractorHero({
 
         <form
           onSubmit={handleSubmit}
-          className="mt-8 max-w-2xl rounded-2xl bg-white/95 p-5 shadow-floating backdrop-blur"
+          className="relative z-30 mt-8 max-w-2xl rounded-2xl bg-white/95 p-5 shadow-floating backdrop-blur"
         >
           <SearchInput
             placeholder="Search by name, service or keyword..."

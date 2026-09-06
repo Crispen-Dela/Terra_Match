@@ -33,7 +33,7 @@ export default function LandSearchHero({
   }
 
   return (
-    <section className="container-page py-10 sm:py-14">
+    <section className="container-page relative z-20 py-10 sm:py-14">
       <h1 className="text-4xl font-extrabold text-ink-900 sm:text-5xl">
         Explore Land
       </h1>
@@ -43,7 +43,7 @@ export default function LandSearchHero({
 
       <form
         onSubmit={handleSubmit}
-        className="mt-6 flex flex-col gap-3 sm:flex-row sm:items-center"
+        className="relative z-30 mt-6 flex flex-col gap-3 sm:flex-row sm:items-center"
       >
         <SearchInput
           placeholder="Search location, area or keyword..."

@@ -8,10 +8,22 @@ import { cn } from "../../utils/cn";
  */
 export default function Dropdown({ label, options, value, onChange, className }) {
   const [isOpen, setIsOpen] = useState(false);
+  const [openUpward, setOpenUpward] = useState(false);
   const rootRef = useRef(null);
 
   useEffect(() => {
     if (!isOpen) return undefined;
+
+    if (rootRef.current) {
+      const rect = rootRef.current.getBoundingClientRect();
+      const spaceBelow = window.innerHeight - rect.bottom;
+      const dropdownEstimatedHeight = 260; // max-h-64 is 256px
+      if (spaceBelow < dropdownEstimatedHeight && rect.top > dropdownEstimatedHeight) {
+        setOpenUpward(true);
+      } else {
+        setOpenUpward(false);
+      }
+    }
 
     function handlePointerDown(event) {
       if (rootRef.current && !rootRef.current.contains(event.target)) {
@@ -31,7 +43,7 @@ export default function Dropdown({ label, options, value, onChange, className })
   }, [isOpen]);
 
   return (
-    <div ref={rootRef} className={cn("relative", className)}>
+    <div ref={rootRef} className={cn("relative", isOpen ? "z-50" : "z-10", className)}>
       <button
         type="button"
         onClick={() => setIsOpen((open) => !open)}
@@ -57,7 +69,10 @@ export default function Dropdown({ label, options, value, onChange, className })
         <ul
           role="listbox"
           aria-label={label}
-          className="absolute left-0 top-[calc(100%+6px)] z-20 max-h-64 w-56 overflow-auto rounded-lg border border-ink-900/10 bg-white py-1.5 shadow-floating"
+          className={cn(
+            "absolute left-0 z-50 max-h-64 w-56 overflow-auto rounded-lg border border-ink-900/10 bg-white py-1.5 shadow-floating",
+            openUpward ? "bottom-[calc(100%+6px)]" : "top-[calc(100%+6px)]"
+          )}
         >
           {options.map((option) => {
             const isSelected = option === value;
