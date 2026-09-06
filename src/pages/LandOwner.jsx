@@ -49,17 +49,20 @@ export default function LandOwner() {
 
   // Real-time listener for live updates when lands are marked sold or deleted
   useEffect(() => {
-    const unsubscribe = subscribeToBidEvents((event) => {
-      if (
-        event?.type === "LAND_STATUS_CHANGED" ||
-        event?.type === "LAND_DELETED" ||
-        event?.type === "BID_STATUS_CHANGED"
-      ) {
-        fetchProfile(false);
-      }
+    const unsubscribe = subscribeToBidEvents({
+      onEvent: (event) => {
+        if (
+          event?.type === "LAND_STATUS_CHANGED" ||
+          event?.type === "LAND_DELETED" ||
+          event?.type === "BID_STATUS_CHANGED"
+        ) {
+          fetchProfile(false);
+        }
+      },
     });
     return () => unsubscribe();
   }, [fetchProfile]);
+
 
   if (loading) {
     return (

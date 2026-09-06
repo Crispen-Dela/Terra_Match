@@ -6,10 +6,25 @@ const API_BASE_URL = (import.meta.env.VITE_API_URL || "").replace(/\/+$/, "");
  * Subscribes to real-time Server-Sent Events (SSE) for bids.
  * Automatically reconnects on network interruptions.
  */
-export function subscribeToBidEvents({ landId, userId, onEvent }) {
+export function subscribeToBidEvents(optionsOrCallback, maybeOptions = {}) {
   if (typeof window === "undefined" || !window.EventSource) {
     return () => {};
   }
+
+  let onEvent;
+  let landId;
+  let userId;
+
+  if (typeof optionsOrCallback === "function") {
+    onEvent = optionsOrCallback;
+    landId = maybeOptions?.landId;
+    userId = maybeOptions?.userId;
+  } else if (optionsOrCallback && typeof optionsOrCallback === "object") {
+    onEvent = optionsOrCallback.onEvent;
+    landId = optionsOrCallback.landId;
+    userId = optionsOrCallback.userId;
+  }
+
 
   let eventSource = null;
   let isClosed = false;

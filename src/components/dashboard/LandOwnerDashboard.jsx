@@ -60,8 +60,9 @@ export default function LandOwnerDashboard({ data, onRefresh }) {
 
   // Live SSE real-time listener for incoming bids, land status updates, and deletions
   useEffect(() => {
-    const unsubscribe = subscribeToBidEvents(
-      (event) => {
+    const unsubscribe = subscribeToBidEvents({
+      userId: user?.id,
+      onEvent: (event) => {
         if (
           event?.type === "BID_PLACED" ||
           event?.type === "BID_STATUS_CHANGED" ||
@@ -71,10 +72,10 @@ export default function LandOwnerDashboard({ data, onRefresh }) {
           if (onRefresh) onRefresh();
         }
       },
-      { userId: user?.id }
-    );
+    });
     return () => unsubscribe();
   }, [user?.id, onRefresh]);
+
 
   const handleUpdateBidStatus = async (bidId, newStatus) => {
     setActionLoadingId(bidId);
