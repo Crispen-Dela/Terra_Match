@@ -17,7 +17,9 @@ function BiddingListingCard({ land }) {
   const location = land.location || land.address || "Greater Accra, Ghana";
   const price = land.price || (land.totalPrice ? `GH₵${land.totalPrice.toLocaleString()}` : "Price on request");
   const bids = land.bids ?? land.bidsCount ?? 0;
-  const image = land.image || (land.images && land.images[0]) || unsplashUrl(LAND_PHOTO_IDS.greenCoveredLand);
+  const rawImage = land.image || (land.images && land.images[0]) || "";
+  const fallbackImage = unsplashUrl(LAND_PHOTO_IDS.greenCoveredLand);
+  const image = rawImage && typeof rawImage === "string" && !rawImage.startsWith("blob:") ? rawImage : fallbackImage;
   const slug = land.slug || land.id || "";
 
   const sold = slug && isSold ? isSold(slug) : false;
@@ -32,6 +34,10 @@ function BiddingListingCard({ land }) {
             src={image}
             alt={name}
             loading="lazy"
+            onError={(e) => {
+              e.currentTarget.onerror = null;
+              e.currentTarget.src = fallbackImage;
+            }}
             className={cn("aspect-[16/9] w-full bg-mist-100 object-cover", (sold || expired) && "opacity-70")}
           />
           {sold && (

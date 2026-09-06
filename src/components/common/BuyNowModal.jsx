@@ -25,10 +25,14 @@ export default function BuyNowModal({ open, onClose, land }) {
 
   const landName = land?.name || land?.title || "Land Listing";
   const landLocation = land?.location || land?.address || "Greater Accra, Ghana";
-  const landImage =
+  const rawLandImage =
     land?.image ||
     (Array.isArray(land?.images) && land.images[0]) ||
-    "https://images.unsplash.com/photo-1500382017468-9049fed747ef?w=600";
+    "";
+  const landImage =
+    rawLandImage && typeof rawLandImage === "string" && !rawLandImage.startsWith("blob:")
+      ? rawLandImage
+      : "https://images.unsplash.com/photo-1500382017468-9049fed747ef?w=600";
   const landPrice = land?.buyNowPrice
     ? formatGHS(land.buyNowPrice)
     : land?.price || (land?.totalPrice ? formatGHS(land.totalPrice) : "Price on request");
@@ -60,11 +64,19 @@ export default function BuyNowModal({ open, onClose, land }) {
     setError("");
     setIsSending(true);
     try {
-      const { conversationId } = await startBuyNowRequest(land, message.trim());
+      await startBuyNowRequest({
+        landSlug: land.slug,
+        landName,
+        landLocation,
+        landPrice,
+        landImage,
+        ownerSlug: land.ownerSlug || "kwame-owusu",
+        initialMessage: message.trim(),
+      });
       onClose?.();
-      navigate(`/messages?contact=${conversationId}`);
+      navigate(`/messages?with=${land.ownerSlug || "kwame-owusu"}`);
     } catch (err) {
-      setError(err.message || "Couldn't send that message. Please try again.");
+      setError(err?.message || "Failed to start conversation. Please try again.");
     } finally {
       setIsSending(false);
     }
@@ -75,8 +87,14 @@ export default function BuyNowModal({ open, onClose, land }) {
   }
 
   return (
-    <Modal open={open} onClose={handleClose} title="Message the Land Owner">
-      <div>
+    <Modal
+      open={open}
+      onClose={handleClose}
+      title="Buy This Land Now"
+      subtitle="Skip the auction and purchase directly from the verified owner."
+      maxWidth="max-w-lg"
+    >
+      <div className="mt-2 space-y-4">
         <p className="text-sm text-ink-700">
           Buy Now connects you directly with the owner of{" "}
           <span className="font-semibold text-ink-900">{landName}</span> to arrange the purchase.
@@ -86,6 +104,10 @@ export default function BuyNowModal({ open, onClose, land }) {
           <img
             src={landImage}
             alt={landName}
+            onError={(e) => {
+              e.currentTarget.onerror = null;
+              e.currentTarget.src = "https://images.unsplash.com/photo-1500382017468-9049fed747ef?w=600";
+            }}
             className="h-14 w-16 shrink-0 rounded-lg bg-mist-100 object-cover"
           />
           <div className="min-w-0 flex-1">

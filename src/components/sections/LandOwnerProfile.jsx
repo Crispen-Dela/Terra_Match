@@ -227,8 +227,12 @@ function ProfileHeader({ owner }) {
       <div className="flex items-start gap-4">
         <div className="relative shrink-0">
           <img
-            src={owner?.avatarUrl || unsplashUrl(KWAME_AVATAR_ID, { w: 160 })}
+            src={owner?.avatarUrl && !owner.avatarUrl.startsWith("blob:") ? owner.avatarUrl : unsplashUrl(KWAME_AVATAR_ID, { w: 160 })}
             alt={owner?.name || "Seller Avatar"}
+            onError={(e) => {
+              e.currentTarget.onerror = null;
+              e.currentTarget.src = unsplashUrl(KWAME_AVATAR_ID, { w: 160 });
+            }}
             className="h-20 w-20 rounded-full object-cover"
           />
           {owner?.verified && (
