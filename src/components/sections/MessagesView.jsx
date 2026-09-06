@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useMemo } from "react";
 import { useSearchParams } from "react-router-dom";
 import MobileTabBar from "../common/MobileTabBar";
 import { useMessages } from "../../context/MessagesContext";
@@ -46,7 +46,7 @@ function BoltIcon({ className }) {
 
 function LandContextCard({ landContext }) {
   return (
-    <div className="flex items-center gap-3 border-b border-ink-900/10 bg-forest-50/60 px-4 py-3">
+    <div className="flex items-center gap-3 border-b border-ink-900/10 bg-forest-50/60 px-4 py-3 shrink-0">
       {landContext.image && (
         <img
           src={landContext.image}
@@ -68,7 +68,7 @@ function LandContextCard({ landContext }) {
 
 function ProjectContextCard({ projectContext }) {
   return (
-    <div className="flex items-center gap-3 border-b border-ink-900/10 bg-amber-50/70 px-4 py-3">
+    <div className="flex items-center gap-3 border-b border-ink-900/10 bg-amber-50/70 px-4 py-3 shrink-0">
       <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-amber-100 text-amber-800">
         <svg viewBox="0 0 24 24" className="h-5 w-5 fill-none stroke-current" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
           <path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z" />
@@ -103,17 +103,21 @@ export default function MessagesView() {
   const landId = searchParams.get("land") || searchParams.get("landId");
 
   const messagesEndRef = useRef(null);
+  const handledParamRef = useRef(null);
 
-  // Sync activeChannelId from context if set by external trigger
+  // Sync activeChannelId from context if externally set
   useEffect(() => {
     if (activeChannelId) {
       setSelectedId(activeChannelId);
     }
   }, [activeChannelId]);
 
-  // Handle URL contact/project/land query parameters
+  // Handle URL contact/project/land query parameters safely without infinite loop
   useEffect(() => {
+    const paramKey = `${contactId || ""}_${projectId || ""}_${landId || ""}`;
     if (!contactId && !projectId && !landId) return;
+    if (handledParamRef.current === paramKey) return;
+    handledParamRef.current = paramKey;
 
     let isMounted = true;
     ensureConversation(contactId, { projectId, landId }).then((resolvedId) => {
@@ -129,21 +133,49 @@ export default function MessagesView() {
     };
   }, [contactId, projectId, landId, ensureConversation, markRead]);
 
-  // Auto-scroll to bottom of messages
-  const selected =
-    conversations.find(
-      (c) =>
-        c.id === selectedId ||
-        c.cid === selectedId ||
-        (selectedId === "support" && c.isSupport) ||
-        (contactId && (c.otherUserId === contactId || c.id === contactId || c.cid === contactId || (contactId === "support" && c.isSupport))) ||
-        (!contactId && projectId && c.projectContext?.id === projectId) ||
-        (!contactId && landId && c.landContext?.id === landId)
-    ) || (conversations.length > 0 && !contactId && !projectId && !landId ? conversations[0] : null);
+  // Deterministic selected conversation resolution
+  const selected = useMemo(() => {
+    if (!conversations || conversations.length === 0) return null;
 
+    if (selectedId) {
+      const match = conversations.find(
+        (c) => c.id === selectedId || c.cid === selectedId || (selectedId === "support" && c.isSupport)
+      );
+      if (match) return match;
+    }
+
+    if (contactId) {
+      const match = conversations.find(
+        (c) =>
+          c.otherUserId === contactId ||
+          c.id === contactId ||
+          c.cid === contactId ||
+          (contactId === "support" && c.isSupport)
+      );
+      if (match) return match;
+    }
+
+    if (projectId) {
+      const match = conversations.find((c) => c.projectContext?.id === projectId);
+      if (match) return match;
+    }
+
+    if (landId) {
+      const match = conversations.find((c) => c.landContext?.id === landId);
+      if (match) return match;
+    }
+
+    return conversations[0] || null;
+  }, [conversations, selectedId, contactId, projectId, landId]);
+
+  // Smooth scroll to bottom on new messages without flicker
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [selected?.messages?.length]);
+    if (messagesEndRef.current) {
+      requestAnimationFrame(() => {
+        messagesEndRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+      });
+    }
+  }, [selected?.messages?.length, selected?.id]);
 
   function handleSelect(id) {
     setSelectedId(id);
@@ -163,17 +195,17 @@ export default function MessagesView() {
   }
 
   return (
-    <div className="flex min-h-screen flex-col bg-mist-50">
-      <div className="mx-auto flex w-full max-w-5xl flex-1 flex-col overflow-hidden lg:my-4 lg:rounded-2xl lg:border lg:border-ink-900/10 lg:bg-white lg:shadow-card">
-        <div className="grid flex-1 overflow-hidden lg:grid-cols-[320px_1fr]">
+    <div className="flex h-screen max-h-screen flex-col bg-mist-50 overflow-hidden">
+      <div className="mx-auto flex w-full max-w-5xl flex-1 min-h-0 flex-col overflow-hidden p-2 sm:p-4 lg:p-4">
+        <div className="grid flex-1 min-h-0 overflow-hidden rounded-2xl border border-ink-900/10 bg-white shadow-card lg:grid-cols-[320px_1fr]">
           {/* Conversation list */}
           <div
             className={cn(
-              "flex-col overflow-y-auto border-ink-900/10 bg-white lg:flex lg:border-r",
+              "flex flex-col h-full min-h-0 overflow-hidden border-ink-900/10 bg-white lg:flex lg:border-r",
               selected ? "hidden lg:flex" : "flex"
             )}
           >
-            <div className="border-b border-ink-900/10 px-5 py-4">
+            <div className="shrink-0 border-b border-ink-900/10 px-5 py-4">
               <h1 className="flex items-center gap-2 text-lg font-bold text-ink-900">
                 Messages
                 {totalUnread > 0 && (
@@ -184,63 +216,68 @@ export default function MessagesView() {
               </h1>
             </div>
 
-            {conversations.length === 0 ? (
-              <div className="p-8 text-center text-xs text-ink-400">
-                No active conversations yet. Reach out to a land owner or contractor to start chatting.
-              </div>
-            ) : (
-              <ul>
-                {conversations.map((c) => (
-                  <li key={c.id}>
-                    <button
-                      type="button"
-                      onClick={() => handleSelect(c.id)}
-                      className={cn(
-                        "flex w-full items-center gap-3 border-b border-ink-900/5 px-5 py-3.5 text-left transition-colors hover:bg-mist-50",
-                        selectedId === c.id && "bg-forest-50"
-                      )}
-                    >
-                      <span
-                        className={cn(
-                          "flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-sm font-bold",
-                          c.isSupport ? "bg-forest-600 text-white" : "bg-forest-100 text-forest-700"
-                        )}
-                      >
-                        {c.isSupport ? <ShieldIcon className="h-5 w-5" /> : c.avatarInitials}
-                      </span>
-                      <div className="min-w-0 flex-1">
-                        <div className="flex items-center justify-between gap-2">
-                          <p className="truncate text-sm font-semibold text-ink-900">{c.name}</p>
-                          <span className="shrink-0 text-[11px] text-ink-400">{c.lastMessageTime}</span>
-                        </div>
-                        <div className="flex items-center justify-between gap-2">
-                          <p className="truncate text-xs text-ink-500">
-                            {c.messages && c.messages.length > 0
-                              ? c.messages[c.messages.length - 1]?.text
-                              : c.subtitle || "New conversation"}
-                          </p>
-                          {c.unreadCount > 0 && (
-                            <span className="flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-forest-600 text-[10px] font-bold text-white">
-                              {c.unreadCount}
-                            </span>
+            <div className="flex-1 min-h-0 overflow-y-auto">
+              {conversations.length === 0 ? (
+                <div className="p-8 text-center text-xs text-ink-400">
+                  No active conversations yet. Reach out to a land owner or contractor to start chatting.
+                </div>
+              ) : (
+                <ul>
+                  {conversations.map((c) => {
+                    const isSelected = selected?.id === c.id || (selected?.isSupport && c.isSupport);
+                    return (
+                      <li key={c.id}>
+                        <button
+                          type="button"
+                          onClick={() => handleSelect(c.id)}
+                          className={cn(
+                            "flex w-full items-center gap-3 border-b border-ink-900/5 px-5 py-3.5 text-left transition-colors hover:bg-mist-50",
+                            isSelected && "bg-forest-50"
                           )}
-                        </div>
-                      </div>
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            )}
+                        >
+                          <span
+                            className={cn(
+                              "flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-sm font-bold",
+                              c.isSupport ? "bg-forest-600 text-white" : "bg-forest-100 text-forest-700"
+                            )}
+                          >
+                            {c.isSupport ? <ShieldIcon className="h-5 w-5" /> : c.avatarInitials}
+                          </span>
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-center justify-between gap-2">
+                              <p className="truncate text-sm font-semibold text-ink-900">{c.name}</p>
+                              <span className="shrink-0 text-[11px] text-ink-400">{c.lastMessageTime}</span>
+                            </div>
+                            <div className="flex items-center justify-between gap-2">
+                              <p className="truncate text-xs text-ink-500">
+                                {c.messages && c.messages.length > 0
+                                  ? c.messages[c.messages.length - 1]?.text
+                                  : c.subtitle || "New conversation"}
+                              </p>
+                              {c.unreadCount > 0 && (
+                                <span className="flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-forest-600 text-[10px] font-bold text-white">
+                                  {c.unreadCount}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        </button>
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+            </div>
           </div>
 
           {/* Thread view */}
-          <div className={cn("flex-col bg-mist-50 lg:flex", selected ? "flex" : "hidden lg:flex")}>
+          <div className={cn("flex flex-col h-full min-h-0 overflow-hidden bg-mist-50 lg:flex", selected ? "flex" : "hidden lg:flex")}>
             {selected ? (
               <>
-                <div className="flex items-center gap-3 border-b border-ink-900/10 bg-white px-4 py-3.5">
+                <div className="shrink-0 flex items-center gap-3 border-b border-ink-900/10 bg-white px-4 py-3.5 z-10">
                   <button
                     type="button"
-                    onClick={() => setSelectedId(null)}
+                    onClick={() => { setSelectedId(null); setActiveChannelId?.(null); }}
                     className="flex h-8 w-8 items-center justify-center rounded-full hover:bg-mist-100 lg:hidden"
                     aria-label="Back to conversations"
                   >
@@ -277,7 +314,7 @@ export default function MessagesView() {
                 {selected.landContext && <LandContextCard landContext={selected.landContext} />}
                 {selected.projectContext && <ProjectContextCard projectContext={selected.projectContext} />}
 
-                <div className="flex-1 space-y-3 overflow-y-auto px-4 py-5">
+                <div className="flex-1 min-h-0 space-y-3 overflow-y-auto px-4 py-4 overscroll-contain">
                   {(!selected.messages || selected.messages.length === 0) && (
                     <div className="pt-8 text-center">
                       <span className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-forest-50 text-forest-600 mb-2">
@@ -312,7 +349,7 @@ export default function MessagesView() {
                             : "rounded-bl-sm border border-ink-900/10 bg-white text-ink-800"
                         )}
                       >
-                        {m.text}
+                        {m.text || m.body}
                       </div>
                       <span className="mt-1 text-[11px] text-ink-400">{m.time}</span>
                     </div>
@@ -321,13 +358,13 @@ export default function MessagesView() {
                 </div>
 
                 {justSentNotice && selected.isBuyNowRequest && (
-                  <div className="flex items-center gap-2 border-t border-forest-100 bg-forest-50/80 px-4 py-2.5 text-xs font-medium text-forest-700">
+                  <div className="shrink-0 flex items-center gap-2 border-t border-forest-100 bg-forest-50/80 px-4 py-2.5 text-xs font-medium text-forest-700">
                     <BoltIcon className="h-3.5 w-3.5" />
                     Buy Now request sent — the land owner has been notified.
                   </div>
                 )}
 
-                <form onSubmit={handleSend} className="flex items-center gap-2 border-t border-ink-900/10 bg-white p-3">
+                <form onSubmit={handleSend} className="shrink-0 flex items-center gap-2 border-t border-ink-900/10 bg-white p-3 z-10">
                   <label htmlFor="message-draft" className="sr-only">
                     Type a message
                   </label>
@@ -343,7 +380,7 @@ export default function MessagesView() {
                     type="submit"
                     disabled={!draft.trim()}
                     aria-label="Send message"
-                    className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-forest-600 text-white disabled:opacity-40"
+                    className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-forest-600 text-white disabled:opacity-40 hover:bg-forest-700 transition-colors"
                   >
                     <SendIcon className="h-4 w-4" />
                   </button>
@@ -359,7 +396,9 @@ export default function MessagesView() {
         </div>
       </div>
 
-      <MobileTabBar active="messages" />
+      <div className="shrink-0">
+        <MobileTabBar active="messages" />
+      </div>
     </div>
   );
 }

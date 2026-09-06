@@ -37,8 +37,7 @@ function formatMessageTime(dateInput) {
 
 /**
  * Deterministic message deduplication & chronological sorting.
- * Replaces optimistic temp messages (temp-* / sse-*) when confirmed by server response,
- * and eliminates duplicate copies from DB vs Stream.
+ * Reconciles optimistic temp messages (temp-* / sse-*) with confirmed server records.
  */
 function deduplicateAndSortMessages(msgs) {
   if (!Array.isArray(msgs)) return [];
@@ -103,9 +102,16 @@ export function MessagesProvider({ children }) {
   const [conversationMessagesMap, setConversationMessagesMap] = useState({});
   const [activeChannelId, setActiveChannelId] = useState(null);
   const [connecting, setConnecting] = useState(false);
-  const [updateTick, setUpdateTick] = useState(0);
 
   const clientRef = useRef(null);
+  const dbConversationsRef = useRef([]);
+  dbConversationsRef.current = dbConversations;
+
+  const conversationMessagesMapRef = useRef({});
+  conversationMessagesMapRef.current = conversationMessagesMap;
+
+  const activeChannelIdRef = useRef(null);
+  activeChannelIdRef.current = activeChannelId;
 
   // 1. Fetch persistent conversations from backend PostgreSQL database
   const refreshDbConversations = useCallback(async () => {
@@ -182,7 +188,7 @@ export function MessagesProvider({ children }) {
 
   useEffect(() => {
     refreshDbConversations();
-  }, [refreshDbConversations, updateTick]);
+  }, [refreshDbConversations]);
 
   // 2. Initialize and connect Stream Chat client in parallel
   useEffect(() => {
@@ -199,7 +205,6 @@ export function MessagesProvider({ children }) {
           clientRef.current = null;
           setClient(null);
           setRawChannels([]);
-          setActiveChannelId(null);
         }
         return;
       }
@@ -209,7 +214,6 @@ export function MessagesProvider({ children }) {
         const { apiKey, token } = await chatApi.getToken();
         if (!isMounted) return;
 
-        // Disconnect existing client if connected to a different user
         if (clientRef.current) {
           if (clientRef.current.userID === user.id) {
             return;
@@ -238,7 +242,6 @@ export function MessagesProvider({ children }) {
         clientRef.current = streamClient;
         setClient(streamClient);
 
-        // Query initial channels
         const filter = { members: { $in: [user.id] } };
         const sort = [{ last_message_at: -1 }];
         const channels = await streamClient.queryChannels(filter, sort, {
@@ -251,14 +254,14 @@ export function MessagesProvider({ children }) {
           setRawChannels(channels);
         }
 
-        // Listen for real-time chat events
         const handleEvent = (event) => {
           if (!isMounted) return;
           if (event.message) {
             const isSupport =
               event.channel?.data?.isSupport === true ||
-              event.channel_id?.startsWith("support_") ||
+              (typeof event.channel_id === "string" && event.channel_id.startsWith("support_")) ||
               event.message.user?.customRole === "ADMIN";
+
             const newMsg = {
               id: event.message.id,
               senderId: event.message.user?.id,
@@ -286,8 +289,6 @@ export function MessagesProvider({ children }) {
             }
           }
 
-          setUpdateTick((t) => t + 1);
-          refreshDbConversations();
           if (event.type === "notification.added_to_channel" || event.type === "channel.updated") {
             streamClient.queryChannels(filter, sort, { watch: true, state: true }).then((chans) => {
               if (isMounted) setRawChannels(chans);
@@ -312,7 +313,7 @@ export function MessagesProvider({ children }) {
     return () => {
       isMounted = false;
     };
-  }, [isAuthed, user?.id, refreshDbConversations]);
+  }, [isAuthed, user?.id]);
 
   // 3. Real-time SSE listener for admin replies and updates
   useEffect(() => {
@@ -326,7 +327,6 @@ export function MessagesProvider({ children }) {
         try {
           const data = JSON.parse(event.data);
           if (data.type === "SUPPORT_REPLY_RECEIVED") {
-            // Admin sent a support reply
             if (!data.userId || data.userId === user.id) {
               const replyMsg = {
                 id: `sse-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
@@ -353,7 +353,6 @@ export function MessagesProvider({ children }) {
                 };
               });
 
-              // Update conversation preview in-place without resetting list
               setDbConversations((prev) =>
                 prev.map((c) => {
                   if (c.isSupport || c.id === targetConvId || c.id === "support") {
@@ -366,9 +365,6 @@ export function MessagesProvider({ children }) {
                   return c;
                 })
               );
-
-              // Background refresh to guarantee PostgreSQL sync
-              refreshDbConversations();
             }
           } else if (data.type === "SUPPORT_MESSAGE_RECEIVED" || data.type === "MESSAGE_RECEIVED") {
             refreshDbConversations();
@@ -456,7 +452,7 @@ export function MessagesProvider({ children }) {
     if (activeChannelId) {
       loadConversationMessages(activeChannelId);
     }
-  }, [activeChannelId, loadConversationMessages, updateTick]);
+  }, [activeChannelId, loadConversationMessages]);
 
   // 5. Unified Conversation List (Merged DB conversations & Stream channels)
   const conversations = useMemo(() => {
@@ -464,7 +460,6 @@ export function MessagesProvider({ children }) {
 
     const map = new Map();
 
-    // First, populate from DB conversations (Guaranteed persistent source of truth!)
     dbConversations.forEach((dbc) => {
       const isSupport = Boolean(
         dbc.isSupport ||
@@ -537,7 +532,6 @@ export function MessagesProvider({ children }) {
       });
     });
 
-    // Second, merge Stream channels
     rawChannels.forEach((chan) => {
       const state = chan.state;
       const members = Object.values(state.members || {});
@@ -620,7 +614,6 @@ export function MessagesProvider({ children }) {
           messages: deduplicateAndSortMessages(streamMessages.length > 0 ? streamMessages : cachedMsgs),
         });
       } else {
-        // Merge into existing DB conversation with strict deduplication
         const existing = map.get(otherUserId);
         existing.channel = chan;
         if (chan.id) existing.cid = chan.cid;
@@ -635,7 +628,7 @@ export function MessagesProvider({ children }) {
     });
 
     return Array.from(map.values());
-  }, [dbConversations, rawChannels, user, conversationMessagesMap, updateTick]);
+  }, [dbConversations, rawChannels, user, conversationMessagesMap]);
 
   const totalUnread = useMemo(() => {
     return conversations.reduce((sum, c) => sum + (c.unreadCount || 0), 0);
@@ -703,19 +696,20 @@ export function MessagesProvider({ children }) {
     [startConversation]
   );
 
-  // 7. Send message to active conversation (Supports DB API, Support API, and Stream Chat)
+  // 7. Send message to active conversation
   const sendMessage = useCallback(
     async (channelId, text) => {
       if (!text || !text.trim() || !user) return;
       const cleanText = text.trim();
 
-      const conv = conversations.find(
+      const currentConvs = dbConversationsRef.current;
+      const conv = currentConvs.find(
         (c) => c.id === channelId || c.cid === channelId || (channelId === "support" && c.isSupport)
       );
       const isSupportMsg = channelId === "support" || conv?.isSupport || (typeof channelId === "string" && channelId.startsWith("support_"));
       const targetKey = conv?.id || channelId;
 
-      // 1. Optimistic Message UI update
+      // Optimistic Message UI update
       const optimisticId = `temp-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
       const optimisticMsg = {
         id: optimisticId,
@@ -730,7 +724,7 @@ export function MessagesProvider({ children }) {
       };
 
       setConversationMessagesMap((prev) => {
-        const existing = prev[targetKey] || (isSupportMsg ? prev["support"] : null) || conv?.messages || [];
+        const existing = prev[targetKey] || (isSupportMsg ? prev["support"] : null) || [];
         const updated = deduplicateAndSortMessages([...existing, optimisticMsg]);
         return {
           ...prev,
@@ -739,7 +733,6 @@ export function MessagesProvider({ children }) {
         };
       });
 
-      // 2. In-place preview update
       setDbConversations((prev) =>
         prev.map((c) => {
           if (c.id === targetKey || (isSupportMsg && c.isSupport)) {
@@ -753,7 +746,7 @@ export function MessagesProvider({ children }) {
         })
       );
 
-      // 3. Send to Backend Database API
+      // Send to Backend Database API
       let confirmedMsg = null;
       let serverConvId = targetKey;
 
@@ -794,7 +787,6 @@ export function MessagesProvider({ children }) {
         console.warn("Backend DB message send warning:", dbErr.message);
       }
 
-      // 4. Confirm message in cache
       if (confirmedMsg) {
         setConversationMessagesMap((prev) => {
           const existing = prev[serverConvId] || prev[targetKey] || (isSupportMsg ? prev["support"] : null) || [];
@@ -807,11 +799,8 @@ export function MessagesProvider({ children }) {
           };
         });
       }
-
-      // Background refresh to guarantee PostgreSQL sync
-      refreshDbConversations();
     },
-    [conversations, user, refreshDbConversations]
+    [user]
   );
 
   // 8. Mark channel messages as read
@@ -833,7 +822,6 @@ export function MessagesProvider({ children }) {
           // ignore
         }
       }
-      setUpdateTick((t) => t + 1);
     },
     [rawChannels]
   );
@@ -846,12 +834,13 @@ export function MessagesProvider({ children }) {
       const isSupportQuery =
         contactParam === "support" || contactParam === "admin" || contactParam === "help";
 
-      const directMatch = conversations.find(
+      const currentConvs = dbConversationsRef.current;
+      const directMatch = currentConvs.find(
         (c) =>
           (isSupportQuery && c.isSupport) ||
-          (contactParam && (c.id === contactParam || c.cid === contactParam || c.otherUserId === contactParam)) ||
-          (!contactParam && projectId && c.projectContext?.id === projectId) ||
-          (!contactParam && landId && c.landContext?.id === landId)
+          (contactParam && (c.id === contactParam || c.cid === contactParam || c.otherPartyId === contactParam)) ||
+          (!contactParam && projectId && c.projectId === projectId) ||
+          (!contactParam && landId && c.landId === landId)
       );
 
       if (directMatch) {
@@ -880,7 +869,7 @@ export function MessagesProvider({ children }) {
 
       return contactParam;
     },
-    [conversations, startConversation, loadConversationMessages]
+    [startConversation, loadConversationMessages]
   );
 
   const startSupportConversation = useCallback(

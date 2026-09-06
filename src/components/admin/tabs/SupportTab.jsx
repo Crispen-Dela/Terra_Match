@@ -36,6 +36,14 @@ function UserIcon({ className }) {
   );
 }
 
+function ChevronLeftIcon({ className }) {
+  return (
+    <svg viewBox="0 0 20 20" className={cn("fill-none stroke-current", className)} aria-hidden="true">
+      <path d="M12.5 4.5l-6 5.5 6 5.5" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
 function formatTime(dateInput) {
   if (!dateInput) return "";
   const date = new Date(dateInput);
@@ -76,16 +84,18 @@ export default function SupportTab() {
 
   const messagesEndRef = useRef(null);
   const replyInputRef = useRef(null);
+  const selectedTicketRef = useRef(null);
+  selectedTicketRef.current = selectedTicket;
 
   useEffect(() => {
     loadTickets();
   }, [statusFilter]);
 
-  // Periodic refresh & live SSE setup
+  // Periodic refresh & stable live SSE listener (does NOT tear down when ticket changes)
   useEffect(() => {
     const interval = setInterval(() => {
       loadTickets(true);
-    }, 8000);
+    }, 10000);
 
     let eventSource = null;
     try {
@@ -99,8 +109,9 @@ export default function SupportTab() {
             data.type === "SUPPORT_REPLY_RECEIVED"
           ) {
             loadTickets(true);
-            if (selectedTicket && (data.conversationId === selectedTicket.id || data.conversationId === selectedTicket.conversationId)) {
-              loadThread(selectedTicket.id, true);
+            const currentSel = selectedTicketRef.current;
+            if (currentSel && (data.conversationId === currentSel.id || data.conversationId === currentSel.conversationId)) {
+              loadThread(currentSel.id, true);
             }
           }
         } catch (e) {
@@ -115,11 +126,15 @@ export default function SupportTab() {
       clearInterval(interval);
       if (eventSource) eventSource.close();
     };
-  }, [selectedTicket?.id]);
+  }, []);
 
-  // Scroll to bottom when messages update
+  // Smooth scroll to bottom on message update
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    if (messagesEndRef.current) {
+      requestAnimationFrame(() => {
+        messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+      });
+    }
   }, [messages.length]);
 
   async function loadTickets(isBackground = false) {
@@ -129,17 +144,13 @@ export default function SupportTab() {
       const list = res || [];
       setTickets(list);
 
-      // If a ticket is currently selected, refresh its data
-      if (selectedTicket) {
-        const updated = list.find((t) => t.id === selectedTicket.id);
+      const currentSel = selectedTicketRef.current;
+      if (currentSel) {
+        const updated = list.find((t) => t.id === currentSel.id);
         if (updated) {
           setSelectedTicket(updated);
-          if (updated.messages && updated.messages.length > 0) {
-            setMessages(updated.messages);
-          }
         }
-      } else if (list.length > 0 && !selectedTicket && !isBackground) {
-        // Auto-select first ticket
+      } else if (list.length > 0 && !isBackground) {
         handleSelectTicket(list[0]);
       }
     } catch (err) {
@@ -152,15 +163,10 @@ export default function SupportTab() {
   async function handleSelectTicket(ticket) {
     setSelectedTicket(ticket);
     setReplyText("");
-    if (ticket.messages && ticket.messages.length > 0) {
-      setMessages(ticket.messages);
-    } else {
-      setMessages([]);
-    }
     loadThread(ticket.id);
   }
 
-  async function loadThread(ticketId, isBackground = false) {
+  async function loadThread(ticketId) {
     try {
       const res = await adminApi.getSupportConversation(ticketId);
       if (res && res.messages) {
@@ -193,7 +199,7 @@ export default function SupportTab() {
     try {
       await adminApi.replyToSupportTicket(selectedTicket.id, textToSend);
       await loadTickets(true);
-      await loadThread(selectedTicket.id, true);
+      await loadThread(selectedTicket.id);
     } catch (err) {
       alert("Failed to send reply: " + (err.message || "Unknown error"));
     } finally {
@@ -235,9 +241,9 @@ export default function SupportTab() {
   const totalUnreadCount = tickets.reduce((sum, t) => sum + (t.unreadCount || (t.status === "NEW" ? 1 : 0)), 0);
 
   return (
-    <div className="animate-in fade-in duration-500 h-[calc(100vh-140px)] flex flex-col">
+    <div className="h-[calc(100vh-140px)] flex flex-col min-h-0 overflow-hidden">
       {/* Top Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-4 gap-3">
+      <div className="shrink-0 flex flex-col sm:flex-row sm:items-center sm:justify-between mb-3 gap-3">
         <div>
           <div className="flex items-center gap-2.5">
             <h2 className="text-xl font-bold text-slate-100 tracking-tight">Support Inbox</h2>
@@ -247,7 +253,7 @@ export default function SupportTab() {
               </span>
             )}
           </div>
-          <p className="text-sm text-slate-400 mt-0.5">
+          <p className="text-xs text-slate-400 mt-0.5">
             Real-time direct chat and ticket resolution with platform users.
           </p>
         </div>
@@ -281,10 +287,15 @@ export default function SupportTab() {
       </div>
 
       {/* Main Two-Column Card */}
-      <div className="flex-1 rounded-2xl border border-slate-800 bg-[#0f172a]/60 shadow-xl flex overflow-hidden">
+      <div className="flex-1 min-h-0 rounded-2xl border border-slate-800 bg-[#0f172a]/60 shadow-xl flex overflow-hidden">
         {/* Left Column: User / Ticket List */}
-        <div className="w-full sm:w-1/3 lg:w-[360px] shrink-0 border-r border-slate-800/90 flex flex-col bg-[#0b1120]">
-          <div className="border-b border-slate-800/80 px-4 py-3 bg-slate-900/40 flex items-center justify-between">
+        <div
+          className={cn(
+            "w-full sm:w-1/3 lg:w-[360px] shrink-0 border-r border-slate-800/90 flex flex-col bg-[#0b1120] min-h-0 overflow-hidden",
+            selectedTicket ? "hidden sm:flex" : "flex"
+          )}
+        >
+          <div className="shrink-0 border-b border-slate-800/80 px-4 py-3 bg-slate-900/40 flex items-center justify-between">
             <span className="text-xs font-bold uppercase tracking-wider text-slate-400">
               Conversations ({filteredTickets.length})
             </span>
@@ -296,7 +307,7 @@ export default function SupportTab() {
             </button>
           </div>
 
-          <div className="flex-1 overflow-y-auto divide-y divide-slate-800/60">
+          <div className="flex-1 min-h-0 overflow-y-auto divide-y divide-slate-800/60">
             {loading && tickets.length === 0 ? (
               <div className="p-8 text-center text-sm text-slate-500 animate-pulse">
                 Loading support conversations...
@@ -322,7 +333,6 @@ export default function SupportTab() {
                         : "border-l-4 border-l-transparent"
                     )}
                   >
-                    {/* User Avatar */}
                     <span className="relative flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-emerald-950/80 border border-emerald-500/30 text-xs font-bold text-emerald-300 shadow-sm">
                       {initialsFrom(ticket.name)}
                       {unread && (
@@ -330,7 +340,6 @@ export default function SupportTab() {
                       )}
                     </span>
 
-                    {/* Content */}
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center justify-between gap-1 mb-0.5">
                         <p className={cn("truncate text-sm font-semibold", isSelected ? "text-white" : "text-slate-200")}>
@@ -367,12 +376,25 @@ export default function SupportTab() {
         </div>
 
         {/* Right Column: Live Chat View & Details */}
-        <div className="hidden sm:flex flex-1 flex-col bg-[#0b1120]/40">
+        <div
+          className={cn(
+            "flex-1 min-h-0 flex-col bg-[#0b1120]/40 overflow-hidden",
+            selectedTicket ? "flex" : "hidden sm:flex"
+          )}
+        >
           {selectedTicket ? (
             <>
               {/* Header Context Bar */}
-              <div className="border-b border-slate-800/90 bg-slate-900/60 p-4 flex items-center justify-between gap-4">
+              <div className="shrink-0 border-b border-slate-800/90 bg-slate-900/60 p-4 flex items-center justify-between gap-4">
                 <div className="flex items-center gap-3 min-w-0">
+                  <button
+                    type="button"
+                    onClick={() => setSelectedTicket(null)}
+                    className="flex h-8 w-8 items-center justify-center rounded-full hover:bg-slate-800 sm:hidden text-slate-400"
+                    aria-label="Back"
+                  >
+                    <ChevronLeftIcon className="h-5 w-5" />
+                  </button>
                   <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-emerald-950/80 border border-emerald-500/40 text-sm font-bold text-emerald-300">
                     {initialsFrom(selectedTicket.name)}
                   </span>
@@ -416,7 +438,7 @@ export default function SupportTab() {
               </div>
 
               {/* Message History List */}
-              <div className="flex-1 overflow-y-auto p-5 space-y-4 bg-gradient-to-b from-[#0b1120]/60 to-[#0f172a]/40">
+              <div className="flex-1 min-h-0 overflow-y-auto p-5 space-y-4 bg-gradient-to-b from-[#0b1120]/60 to-[#0f172a]/40 overscroll-contain">
                 {messages.length === 0 ? (
                   <div className="flex flex-col items-center justify-center h-full text-center py-12">
                     <span className="flex h-12 w-12 items-center justify-center rounded-full bg-slate-800 text-slate-400 mb-2">
@@ -431,7 +453,7 @@ export default function SupportTab() {
 
                     return (
                       <div
-                        key={m.id || idx}
+                        key={m.id || `admin-msg-${idx}-${m.createdAt || idx}`}
                         className={cn("flex flex-col", isAdmin ? "items-end" : "items-start")}
                       >
                         <div className="flex items-center gap-1.5 mb-1 px-1">
@@ -468,7 +490,7 @@ export default function SupportTab() {
               </div>
 
               {/* Bottom Reply Form */}
-              <form onSubmit={handleSendReply} className="border-t border-slate-800/90 bg-slate-900/60 p-4">
+              <form onSubmit={handleSendReply} className="shrink-0 border-t border-slate-800/90 bg-slate-900/60 p-4">
                 <div className="flex items-center gap-3">
                   <textarea
                     ref={replyInputRef}
