@@ -78,7 +78,7 @@ const GHANA_CARD_GATED_ROUTES = ["/list-your-land"];
 
 export default function App() {
   const { pathname } = useLocation();
-  const { isAuthed, isLoading, role, ghanaCardVerified } = useAuth();
+  const { isAuthed, isLoading, role, ghanaCardVerified, isAdmin } = useAuth();
   const [initialLoading, setInitialLoading] = useState(true);
 
   useEffect(() => {
