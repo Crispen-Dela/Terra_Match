@@ -176,6 +176,128 @@ export async function updateUserStatus(req, res, next) {
   }
 }
 
+export async function deleteUser(req, res, next) {
+  try {
+    const { id } = req.params;
+
+    if (id === req.user.id) {
+      throw new AppError("You cannot delete your own admin account.", 400);
+    }
+
+    const targetUser = await prisma.user.findUnique({ where: { id } });
+    if (!targetUser) {
+      throw new AppError("User not found.", 404);
+    }
+
+    await prisma.$transaction(async (tx) => {
+      await tx.landBid.deleteMany({ where: { bidderId: id } });
+      await tx.ghanaCardVerification.deleteMany({ where: { userId: id } });
+      await tx.contractorProfile.deleteMany({ where: { userId: id } });
+      await tx.notification.deleteMany({ where: { recipientId: id } });
+      await tx.supportTicket.deleteMany({ where: { userId: id } });
+      await tx.supportReply.deleteMany({ where: { senderId: id } });
+      await tx.user.delete({ where: { id } });
+    });
+
+    await prisma.auditLog.create({
+      data: {
+        adminId: req.user.id,
+        action: "DELETE_USER",
+        resource: `User:${id}`,
+        details: `Deleted user ${targetUser.email} (${targetUser.name})`,
+      },
+    });
+
+    res.json({ message: `User ${targetUser.name} deleted successfully.` });
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function deleteBid(req, res, next) {
+  try {
+    const { id } = req.params;
+
+    const bid = await prisma.landBid.findUnique({ where: { id } });
+    if (!bid) {
+      throw new AppError("Bid not found.", 404);
+    }
+
+    await prisma.landBid.delete({ where: { id } });
+
+    await prisma.auditLog.create({
+      data: {
+        adminId: req.user.id,
+        action: "DELETE_BID",
+        resource: `LandBid:${id}`,
+        details: `Deleted bid amount: ${bid.amount} on land ${bid.landId}`,
+      },
+    });
+
+    res.json({ message: "Bid deleted successfully." });
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function deleteLand(req, res, next) {
+  try {
+    const { id } = req.params;
+
+    const land = await prisma.landListing.findUnique({ where: { id } });
+    if (!land) {
+      throw new AppError("Land listing not found.", 404);
+    }
+
+    await prisma.$transaction(async (tx) => {
+      await tx.landBid.deleteMany({ where: { landId: id } });
+      await tx.landListing.delete({ where: { id } });
+    });
+
+    await prisma.auditLog.create({
+      data: {
+        adminId: req.user.id,
+        action: "DELETE_LAND",
+        resource: `LandListing:${id}`,
+        details: `Deleted land: ${land.title}`,
+      },
+    });
+
+    res.json({ message: "Land listing deleted successfully." });
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function deleteProject(req, res, next) {
+  try {
+    const { id } = req.params;
+
+    const project = await prisma.constructionProject.findUnique({ where: { id } });
+    if (!project) {
+      throw new AppError("Project not found.", 404);
+    }
+
+    await prisma.$transaction(async (tx) => {
+      await tx.projectBid.deleteMany({ where: { projectId: id } });
+      await tx.constructionProject.delete({ where: { id } });
+    });
+
+    await prisma.auditLog.create({
+      data: {
+        adminId: req.user.id,
+        action: "DELETE_PROJECT",
+        resource: `ConstructionProject:${id}`,
+        details: `Deleted project: ${project.title}`,
+      },
+    });
+
+    res.json({ message: "Project deleted successfully." });
+  } catch (error) {
+    next(error);
+  }
+}
+
 export async function listVerifications(req, res, next) {
   try {
     const { status = "PENDING" } = req.query;

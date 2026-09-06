@@ -3,12 +3,16 @@ import {
   getAdminStats,
   listAllUsers,
   updateUserStatus,
+  deleteUser,
   listVerifications,
   reviewVerification,
   updateLandStatus,
+  deleteLand,
   listLands,
   listBids,
+  deleteBid,
   listProjects,
+  deleteProject,
   listAuditLogs,
   listChats,
   getChatMessages,
@@ -29,12 +33,16 @@ router.use(authenticate, requireAdmin);
 router.get("/stats", getAdminStats);
 router.get("/users", listAllUsers);
 router.put("/users/:id/status", updateUserStatus);
+router.delete("/users/:id", deleteUser);
 router.get("/verifications", listVerifications);
 router.post("/verifications/:id/review", reviewVerification);
 router.put("/lands/:id/status", updateLandStatus);
+router.delete("/lands/:id", deleteLand);
 router.get("/lands", listLands);
 router.get("/bids", listBids);
+router.delete("/bids/:id", deleteBid);
 router.get("/projects", listProjects);
+router.delete("/projects/:id", deleteProject);
 router.get("/logs", listAuditLogs);
 
 // Chat Moderation
