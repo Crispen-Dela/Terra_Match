@@ -293,9 +293,9 @@ export default function MessagesView() {
                       </p>
                     </div>
                   )}
-                  {selected.messages?.map((m) => (
+                  {selected.messages?.map((m, idx) => (
                     <div
-                      key={m.id}
+                      key={m.id || `msg-${idx}-${m.createdAt || idx}`}
                       className={cn("flex flex-col", m.sender === "me" ? "items-end" : "items-start")}
                     >
                       {m.sender !== "me" && selected.isSupport && (

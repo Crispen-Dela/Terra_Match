@@ -35,6 +35,66 @@ function formatMessageTime(dateInput) {
   return date.toLocaleDateString([], { month: "short", day: "numeric" });
 }
 
+/**
+ * Deterministic message deduplication & chronological sorting.
+ * Replaces optimistic temp messages (temp-* / sse-*) when confirmed by server response,
+ * and eliminates duplicate copies from DB vs Stream.
+ */
+function deduplicateAndSortMessages(msgs) {
+  if (!Array.isArray(msgs)) return [];
+
+  const serverMsgs = [];
+  const tempMsgs = [];
+
+  for (const m of msgs) {
+    if (!m) continue;
+    const isTemp = typeof m.id === "string" && (m.id.startsWith("temp-") || m.id.startsWith("sse-"));
+    if (isTemp) {
+      tempMsgs.push(m);
+    } else {
+      serverMsgs.push(m);
+    }
+  }
+
+  const result = [];
+  const seenIds = new Set();
+  const seenSignatures = new Set();
+
+  for (const m of serverMsgs) {
+    if (m.id && seenIds.has(m.id)) continue;
+    if (m.id) seenIds.add(m.id);
+
+    const text = (m.body || m.text || "").trim();
+    const timeBucket = m.createdAt ? Math.floor(new Date(m.createdAt).getTime() / 5000) : 0;
+    const sig = `${m.sender || "me"}_${text}_${timeBucket}`;
+    if (text && seenSignatures.has(sig)) continue;
+    if (text) seenSignatures.add(sig);
+
+    result.push(m);
+  }
+
+  for (const tm of tempMsgs) {
+    const text = (tm.body || tm.text || "").trim();
+    const tmTime = tm.createdAt ? new Date(tm.createdAt).getTime() : Date.now();
+
+    const isAlreadyConfirmed = result.some((sm) => {
+      const smText = (sm.body || sm.text || "").trim();
+      const smTime = sm.createdAt ? new Date(sm.createdAt).getTime() : 0;
+      const sameSender = sm.sender === tm.sender || sm.senderId === tm.senderId;
+      const sameText = smText === text;
+      const closeTime = Math.abs(smTime - tmTime) < 15000;
+      return sameSender && sameText && closeTime;
+    });
+
+    if (!isAlreadyConfirmed && (!tm.id || !seenIds.has(tm.id))) {
+      if (tm.id) seenIds.add(tm.id);
+      result.push(tm);
+    }
+  }
+
+  return result.sort((a, b) => new Date(a.createdAt || 0).getTime() - new Date(b.createdAt || 0).getTime());
+}
+
 export function MessagesProvider({ children }) {
   const { user, isAuthed } = useAuth();
   const [client, setClient] = useState(null);
@@ -65,7 +125,7 @@ export function MessagesProvider({ children }) {
 
       const unifiedList = [...list];
 
-      // If support conversation exists with messages or ID and isn't already in list, include it
+      // If support conversation exists in DB, guarantee it is present in the list
       if (supportData && (supportData.id || (supportData.messages && supportData.messages.length > 0))) {
         const hasSupportInList = unifiedList.some(
           (c) => c.isSupport || c.id === supportData.id || c.type === "SUPPORT"
@@ -90,31 +150,27 @@ export function MessagesProvider({ children }) {
         // Cache messages for support conversation
         if (supportData.messages && supportData.messages.length > 0) {
           const targetKey = supportData.id || "support";
-          setConversationMessagesMap((prev) => ({
-            ...prev,
-            [targetKey]: supportData.messages.map((m) => ({
-              id: m.id,
-              senderId: m.senderId,
-              sender: m.sender === "me" || m.senderId === user.id ? "me" : "them",
-              senderName: m.senderId === user.id ? "You" : "Support (Admin)",
-              isAdmin: m.isAdmin || m.senderId !== user.id,
-              text: m.body || m.message || m.text,
-              body: m.body || m.message || m.text,
-              time: formatMessageTime(m.createdAt),
-              createdAt: m.createdAt,
-            })),
-            support: supportData.messages.map((m) => ({
-              id: m.id,
-              senderId: m.senderId,
-              sender: m.sender === "me" || m.senderId === user.id ? "me" : "them",
-              senderName: m.senderId === user.id ? "You" : "Support (Admin)",
-              isAdmin: m.isAdmin || m.senderId !== user.id,
-              text: m.body || m.message || m.text,
-              body: m.body || m.message || m.text,
-              time: formatMessageTime(m.createdAt),
-              createdAt: m.createdAt,
-            })),
+          const formatted = supportData.messages.map((m) => ({
+            id: m.id,
+            senderId: m.senderId,
+            sender: m.sender === "me" || m.senderId === user.id ? "me" : "them",
+            senderName: m.senderId === user.id ? "You" : "Support (Admin)",
+            isAdmin: Boolean(m.isAdmin || m.senderId !== user.id),
+            text: m.body || m.message || m.text,
+            body: m.body || m.message || m.text,
+            time: formatMessageTime(m.createdAt),
+            createdAt: m.createdAt,
           }));
+
+          setConversationMessagesMap((prev) => {
+            const merged = deduplicateAndSortMessages([...(prev[targetKey] || []), ...(prev["support"] || []), ...formatted]);
+            return {
+              ...prev,
+              [targetKey]: merged,
+              support: merged,
+              ...(supportData.id ? { [supportData.id]: merged } : {}),
+            };
+          });
         }
       }
 
@@ -198,6 +254,38 @@ export function MessagesProvider({ children }) {
         // Listen for real-time chat events
         const handleEvent = (event) => {
           if (!isMounted) return;
+          if (event.message) {
+            const isSupport =
+              event.channel?.data?.isSupport === true ||
+              event.channel_id?.startsWith("support_") ||
+              event.message.user?.customRole === "ADMIN";
+            const newMsg = {
+              id: event.message.id,
+              senderId: event.message.user?.id,
+              sender: event.message.user?.id === user.id ? "me" : "them",
+              senderName:
+                event.message.user?.id === user.id
+                  ? "You"
+                  : isSupport
+                  ? "Support (Admin)"
+                  : event.message.user?.name || "Them",
+              isAdmin: Boolean(isSupport && event.message.user?.id !== user.id),
+              text: event.message.text,
+              body: event.message.text,
+              time: formatMessageTime(event.message.created_at),
+              createdAt: event.message.created_at,
+            };
+
+            const targetKey = event.channel_id || event.channel?.id;
+            if (targetKey) {
+              setConversationMessagesMap((prev) => ({
+                ...prev,
+                [targetKey]: deduplicateAndSortMessages([...(prev[targetKey] || []), newMsg]),
+                ...(isSupport ? { support: deduplicateAndSortMessages([...(prev["support"] || []), newMsg]) } : {}),
+              }));
+            }
+          }
+
           setUpdateTick((t) => t + 1);
           refreshDbConversations();
           if (event.type === "notification.added_to_channel" || event.type === "channel.updated") {
@@ -237,13 +325,53 @@ export function MessagesProvider({ children }) {
       eventSource.onmessage = (event) => {
         try {
           const data = JSON.parse(event.data);
-          if (
-            data.type === "SUPPORT_REPLY_RECEIVED" ||
-            data.type === "SUPPORT_MESSAGE_RECEIVED" ||
-            data.type === "MESSAGE_RECEIVED"
-          ) {
+          if (data.type === "SUPPORT_REPLY_RECEIVED") {
+            // Admin sent a support reply
+            if (!data.userId || data.userId === user.id) {
+              const replyMsg = {
+                id: `sse-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+                senderId: "support_admin",
+                sender: "them",
+                senderName: "Support (Admin)",
+                isAdmin: true,
+                text: data.message,
+                body: data.message,
+                time: formatMessageTime(data.timestamp || new Date()),
+                createdAt: data.timestamp || new Date().toISOString(),
+              };
+
+              const targetConvId = data.conversationId || "support";
+
+              setConversationMessagesMap((prev) => {
+                const existing = prev[targetConvId] || prev["support"] || [];
+                const updated = deduplicateAndSortMessages([...existing, replyMsg]);
+                return {
+                  ...prev,
+                  [targetConvId]: updated,
+                  support: updated,
+                  ...(data.conversationId ? { [data.conversationId]: updated } : {}),
+                };
+              });
+
+              // Update conversation preview in-place without resetting list
+              setDbConversations((prev) =>
+                prev.map((c) => {
+                  if (c.isSupport || c.id === targetConvId || c.id === "support") {
+                    return {
+                      ...c,
+                      lastMessageText: data.message,
+                      lastMessageAt: data.timestamp || new Date().toISOString(),
+                    };
+                  }
+                  return c;
+                })
+              );
+
+              // Background refresh to guarantee PostgreSQL sync
+              refreshDbConversations();
+            }
+          } else if (data.type === "SUPPORT_MESSAGE_RECEIVED" || data.type === "MESSAGE_RECEIVED") {
             refreshDbConversations();
-            setUpdateTick((t) => t + 1);
           }
         } catch (e) {
           // ignore
@@ -263,7 +391,7 @@ export function MessagesProvider({ children }) {
     async (convId) => {
       if (!convId || !isAuthed) return;
       try {
-        if (convId === "support" || convId.startsWith("support_")) {
+        if (convId === "support" || (typeof convId === "string" && convId.startsWith("support_"))) {
           const supportData = await supportApi.getConversation();
           if (supportData && supportData.messages) {
             const formatted = supportData.messages.map((m) => ({
@@ -271,37 +399,50 @@ export function MessagesProvider({ children }) {
               senderId: m.senderId,
               sender: m.sender === "me" || m.senderId === user?.id ? "me" : "them",
               senderName: m.senderId === user?.id ? "You" : "Support (Admin)",
-              isAdmin: m.isAdmin || m.senderId !== user?.id,
+              isAdmin: Boolean(m.isAdmin || m.senderId !== user?.id),
               text: m.body || m.message || m.text,
               body: m.body || m.message || m.text,
               time: formatMessageTime(m.createdAt),
               createdAt: m.createdAt,
             }));
-            setConversationMessagesMap((prev) => ({
-              ...prev,
-              [convId]: formatted,
-              support: formatted,
-              ...(supportData.id ? { [supportData.id]: formatted } : {}),
-            }));
+            const targetKey = supportData.id || "support";
+            setConversationMessagesMap((prev) => {
+              const merged = deduplicateAndSortMessages([
+                ...(prev[targetKey] || []),
+                ...(prev["support"] || []),
+                ...formatted,
+              ]);
+              return {
+                ...prev,
+                [targetKey]: merged,
+                support: merged,
+                ...(supportData.id ? { [supportData.id]: merged } : {}),
+              };
+            });
           }
         } else {
           const detail = await messageApi.get(convId);
           if (detail && detail.messages) {
+            const isSupport = Boolean(detail.isSupport || detail.type === "SUPPORT" || detail.otherPartyRole === "ADMIN");
             const formatted = detail.messages.map((m) => ({
               id: m.id,
               senderId: m.senderId,
               sender: m.sender === "me" || m.senderId === user?.id ? "me" : "them",
-              senderName: m.senderId === user?.id ? "You" : m.senderName || "Them",
-              isAdmin: m.isAdmin,
+              senderName: m.senderId === user?.id ? "You" : isSupport ? "Support (Admin)" : m.senderName || detail.otherPartyName,
+              isAdmin: Boolean(m.isAdmin || (isSupport && m.senderId !== user?.id)),
               text: m.body || m.text,
               body: m.body || m.text,
               time: formatMessageTime(m.createdAt),
               createdAt: m.createdAt,
             }));
-            setConversationMessagesMap((prev) => ({
-              ...prev,
-              [convId]: formatted,
-            }));
+            setConversationMessagesMap((prev) => {
+              const merged = deduplicateAndSortMessages([...(prev[convId] || []), ...formatted]);
+              return {
+                ...prev,
+                [convId]: merged,
+                ...(isSupport ? { support: merged } : {}),
+              };
+            });
           }
         }
       } catch (err) {
@@ -354,6 +495,24 @@ export function MessagesProvider({ children }) {
           }
         : null;
 
+      const deduplicatedMsgs = deduplicateAndSortMessages(
+        cachedMsgs.length > 0
+          ? cachedMsgs
+          : dbc.lastMessageText
+          ? [
+              {
+                id: `initial-${dbc.id}`,
+                sender: "them",
+                senderName: isSupport ? "Support (Admin)" : otherName,
+                text: dbc.lastMessageText,
+                body: dbc.lastMessageText,
+                time: formatMessageTime(dbc.lastMessageAt),
+                createdAt: dbc.lastMessageAt,
+              },
+            ]
+          : []
+      );
+
       map.set(otherUserId, {
         id: dbc.id,
         cid: `messaging:${dbc.id}`,
@@ -374,17 +533,7 @@ export function MessagesProvider({ children }) {
         landContext,
         projectContext: null,
         isBuyNowRequest: Boolean(dbc.landId),
-        messages: cachedMsgs.length > 0 ? cachedMsgs : dbc.lastMessageText ? [
-          {
-            id: `initial-${dbc.id}`,
-            sender: "them",
-            senderName: isSupport ? "Support (Admin)" : otherName,
-            text: dbc.lastMessageText,
-            body: dbc.lastMessageText,
-            time: formatMessageTime(dbc.lastMessageAt),
-            createdAt: dbc.lastMessageAt,
-          }
-        ] : [],
+        messages: deduplicatedMsgs,
       });
     });
 
@@ -399,8 +548,7 @@ export function MessagesProvider({ children }) {
         chan.data?.isSupport === true ||
         chan.data?.name === "Support (Admin)" ||
         chan.data?.name === "TerraMatch Support" ||
-        chan.id.startsWith("support_") ||
-        chan.id.startsWith("tm_support_")
+        (typeof chan.id === "string" && (chan.id.startsWith("support_") || chan.id.startsWith("tm_support_")))
       );
       const otherUserId = isSupport ? "support" : otherMember.id || chan.id;
       const otherName = isSupport ? "Support (Admin)" : rawName;
@@ -410,7 +558,7 @@ export function MessagesProvider({ children }) {
         senderId: m.user?.id,
         sender: m.user?.id === user.id ? "me" : "them",
         senderName: m.user?.id === user.id ? "You" : isSupport ? "Support (Admin)" : otherName,
-        isAdmin: isSupport && m.user?.id !== user.id,
+        isAdmin: Boolean(isSupport && m.user?.id !== user.id),
         text: m.text,
         body: m.text,
         time: formatMessageTime(m.created_at),
@@ -469,30 +617,15 @@ export function MessagesProvider({ children }) {
           landContext,
           projectContext,
           isBuyNowRequest: Boolean(chan.data?.landId),
-          messages: streamMessages.length > 0 ? streamMessages : cachedMsgs,
+          messages: deduplicateAndSortMessages(streamMessages.length > 0 ? streamMessages : cachedMsgs),
         });
       } else {
-        // Merge into existing DB conversation
+        // Merge into existing DB conversation with strict deduplication
         const existing = map.get(otherUserId);
         existing.channel = chan;
         if (chan.id) existing.cid = chan.cid;
 
-        const allMsgs = [...existing.messages, ...streamMessages].sort(
-          (a, b) => new Date(a.createdAt || 0) - new Date(b.createdAt || 0)
-        );
-        const uniqueMessages = [];
-        const seenMsgIds = new Set();
-        for (const msg of allMsgs) {
-          if (msg.id && !seenMsgIds.has(msg.id)) {
-            seenMsgIds.add(msg.id);
-            uniqueMessages.push(msg);
-          } else if (!msg.id) {
-            uniqueMessages.push(msg);
-          }
-        }
-        if (uniqueMessages.length > 0) {
-          existing.messages = uniqueMessages;
-        }
+        existing.messages = deduplicateAndSortMessages([...existing.messages, ...streamMessages]);
         if (landContext) existing.landContext = landContext;
         if (projectContext) existing.projectContext = projectContext;
         if (chan.countUnread && chan.countUnread() > 0) {
@@ -517,13 +650,16 @@ export function MessagesProvider({ children }) {
         if (initialMessage && initialMessage.trim()) {
           const res = await supportApi.sendMessage(initialMessage.trim());
           await refreshDbConversations();
-          setActiveChannelId(res.conversationId || "support");
-          return { conversationId: res.conversationId || "support", channelId: res.channelId || `support_${user?.id}` };
+          const targetId = res.conversationId || "support";
+          setActiveChannelId(targetId);
+          loadConversationMessages(targetId);
+          return { conversationId: targetId, channelId: res.channelId || `support_${user?.id}` };
         } else {
           const res = await supportApi.getConversation();
           await refreshDbConversations();
           const targetId = res?.id || "support";
           setActiveChannelId(targetId);
+          loadConversationMessages(targetId);
           return { conversationId: targetId, channelId: `support_${user?.id}` };
         }
       }
@@ -546,10 +682,12 @@ export function MessagesProvider({ children }) {
         setRawChannels(chans);
       }
 
-      setActiveChannelId(channelId);
+      const resolvedId = res.conversationId || channelId;
+      setActiveChannelId(resolvedId);
+      loadConversationMessages(resolvedId);
       return { conversationId: res.conversationId || channelId, channelId };
     },
-    [user, refreshDbConversations]
+    [user, refreshDbConversations, loadConversationMessages]
   );
 
   // Buy Now flow creates/opens a conversation with land metadata
@@ -565,7 +703,7 @@ export function MessagesProvider({ children }) {
     [startConversation]
   );
 
-  // 7. Send message to active conversation (Supports DB API, Support API, and Stream Chat!)
+  // 7. Send message to active conversation (Supports DB API, Support API, and Stream Chat)
   const sendMessage = useCallback(
     async (channelId, text) => {
       if (!text || !text.trim() || !user) return;
@@ -574,11 +712,13 @@ export function MessagesProvider({ children }) {
       const conv = conversations.find(
         (c) => c.id === channelId || c.cid === channelId || (channelId === "support" && c.isSupport)
       );
-      const isSupportMsg = channelId === "support" || conv?.isSupport || channelId.startsWith("support_");
+      const isSupportMsg = channelId === "support" || conv?.isSupport || (typeof channelId === "string" && channelId.startsWith("support_"));
+      const targetKey = conv?.id || channelId;
 
-      // Optimistic Message UI update
+      // 1. Optimistic Message UI update
+      const optimisticId = `temp-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
       const optimisticMsg = {
-        id: `temp-${Date.now()}`,
+        id: optimisticId,
         senderId: user.id,
         sender: "me",
         senderName: "You",
@@ -589,45 +729,89 @@ export function MessagesProvider({ children }) {
         createdAt: new Date().toISOString(),
       };
 
-      const targetKey = conv?.id || channelId;
-      setConversationMessagesMap((prev) => ({
-        ...prev,
-        [targetKey]: [...(prev[targetKey] || conv?.messages || []), optimisticMsg],
-        ...(isSupportMsg ? { support: [...(prev["support"] || conv?.messages || []), optimisticMsg] } : {}),
-      }));
+      setConversationMessagesMap((prev) => {
+        const existing = prev[targetKey] || (isSupportMsg ? prev["support"] : null) || conv?.messages || [];
+        const updated = deduplicateAndSortMessages([...existing, optimisticMsg]);
+        return {
+          ...prev,
+          [targetKey]: updated,
+          ...(isSupportMsg ? { support: updated } : {}),
+        };
+      });
 
-      // Send to Backend Database API
+      // 2. In-place preview update
+      setDbConversations((prev) =>
+        prev.map((c) => {
+          if (c.id === targetKey || (isSupportMsg && c.isSupport)) {
+            return {
+              ...c,
+              lastMessageText: cleanText,
+              lastMessageAt: new Date().toISOString(),
+            };
+          }
+          return c;
+        })
+      );
+
+      // 3. Send to Backend Database API
+      let confirmedMsg = null;
+      let serverConvId = targetKey;
+
       try {
         if (isSupportMsg) {
-          await supportApi.sendMessage(cleanText);
+          const res = await supportApi.sendMessage(cleanText);
+          if (res?.message) {
+            confirmedMsg = {
+              id: res.message.id,
+              senderId: user.id,
+              sender: "me",
+              senderName: "You",
+              isAdmin: false,
+              text: res.message.body || cleanText,
+              body: res.message.body || cleanText,
+              time: formatMessageTime(res.message.createdAt),
+              createdAt: res.message.createdAt,
+            };
+            if (res.conversationId) serverConvId = res.conversationId;
+          }
         } else if (conv?.id && conv.id !== "support") {
-          await messageApi.send(conv.id, cleanText);
+          const res = await messageApi.send(conv.id, cleanText);
+          if (res) {
+            confirmedMsg = {
+              id: res.id,
+              senderId: user.id,
+              sender: "me",
+              senderName: "You",
+              isAdmin: false,
+              text: res.body || cleanText,
+              body: res.body || cleanText,
+              time: formatMessageTime(res.createdAt),
+              createdAt: res.createdAt,
+            };
+          }
         }
       } catch (dbErr) {
         console.warn("Backend DB message send warning:", dbErr.message);
       }
 
-      // Send via Stream Chat if available
-      if (clientRef.current) {
-        try {
-          let targetChan = rawChannels.find((c) => c.id === channelId || c.cid === channelId);
-          if (!targetChan && channelId) {
-            const rawId = channelId.includes(":") ? channelId.split(":")[1] : channelId;
-            targetChan = clientRef.current.channel("messaging", rawId);
-            await targetChan.watch();
-          }
-          if (targetChan) {
-            await targetChan.sendMessage({ text: cleanText });
-          }
-        } catch (streamErr) {
-          console.warn("Stream send message warning:", streamErr.message);
-        }
+      // 4. Confirm message in cache
+      if (confirmedMsg) {
+        setConversationMessagesMap((prev) => {
+          const existing = prev[serverConvId] || prev[targetKey] || (isSupportMsg ? prev["support"] : null) || [];
+          const updated = deduplicateAndSortMessages([...existing, confirmedMsg]);
+          return {
+            ...prev,
+            [serverConvId]: updated,
+            [targetKey]: updated,
+            ...(isSupportMsg ? { support: updated } : {}),
+          };
+        });
       }
 
-      setUpdateTick((t) => t + 1);
-      await refreshDbConversations();
+      // Background refresh to guarantee PostgreSQL sync
+      refreshDbConversations();
     },
-    [conversations, rawChannels, user, refreshDbConversations]
+    [conversations, user, refreshDbConversations]
   );
 
   // 8. Mark channel messages as read

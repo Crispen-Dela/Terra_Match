@@ -596,3 +596,38 @@ export async function getUnreadCount(req, res, next) {
     next(error);
   }
 }
+
+function formatConversationDetail(c, currentUserId) {
+  const otherParty = c.buyerId === currentUserId ? c.seller : c.buyer;
+  const isSupport =
+    otherParty?.role === "ADMIN" ||
+    (c.landId == null && c.projectId == null && (c.buyer?.role === "ADMIN" || c.seller?.role === "ADMIN"));
+
+  return {
+    id: c.id,
+    landId: c.landId,
+    landTitle: c.land?.title || c.project?.title || (isSupport ? "Support Inquiry" : null),
+    isSupport: Boolean(isSupport),
+    type: isSupport ? "SUPPORT" : "DIRECT",
+    otherPartyId: isSupport ? "support" : otherParty?.id || "unknown",
+    otherPartyName: isSupport ? "Support (Admin)" : otherParty?.name || "User",
+    otherPartyRole: isSupport ? "ADMIN" : otherParty?.role || "USER",
+    otherPartyAvatarUrl: otherParty?.avatarUrl || null,
+    messages: (c.messages || []).map((m) => ({
+      id: m.id,
+      senderId: m.senderId,
+      senderName: isSupport && (m.sender?.role === "ADMIN" || m.senderId !== currentUserId)
+        ? "Support (Admin)"
+        : m.senderId === currentUserId
+        ? "You"
+        : (m.sender?.name || otherParty?.name || "User"),
+      isAdmin: Boolean(m.sender?.role === "ADMIN" || (isSupport && m.senderId !== currentUserId)),
+      sender: m.senderId === currentUserId ? "me" : "them",
+      body: m.body,
+      text: m.body,
+      isRead: m.isRead,
+      createdAt: m.createdAt,
+    })),
+  };
+}
+

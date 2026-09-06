@@ -48,6 +48,7 @@ export async function createOrGetChannel(req, res, next) {
 
     const { targetUserId, targetSlug, landId, projectId, initialMessage } = req.body;
     let resolvedTargetUserId = targetUserId || null;
+    let targetUser = null;
     let targetLand = null;
     let targetProject = null;
 
