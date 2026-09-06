@@ -35,9 +35,8 @@ export async function startOrGetConversation(req, res, next) {
     }
 
     if (!targetSellerId) {
-      // Fallback to any active land owner / admin if not specified
       const fallbackUser = await prisma.user.findFirst({
-        where: { role: "LAND_OWNER" },
+        where: { role: "LAND_OWNER", id: { not: req.user.id } },
       });
       targetSellerId = fallbackUser ? fallbackUser.id : req.user.id;
     }
@@ -46,29 +45,51 @@ export async function startOrGetConversation(req, res, next) {
       throw new AppError("Cannot start a conversation with yourself.", 400);
     }
 
-    // UNIQUE CONVERSATION RULE: Check for ANY existing thread between buyer and seller regardless of landId
+    // Check for existing conversation thread between buyer and seller
     let conversation = await prisma.conversation.findFirst({
       where: {
         OR: [
           { buyerId: req.user.id, sellerId: targetSellerId },
           { buyerId: targetSellerId, sellerId: req.user.id },
         ],
+        ...(targetLand ? { landId: targetLand.id } : targetProject ? { projectId: targetProject.id } : {}),
       },
       include: {
         land: true,
         project: true,
-        buyer: { select: { id: true, name: true, avatarUrl: true } },
-        seller: { select: { id: true, name: true, avatarUrl: true } },
+        buyer: { select: { id: true, name: true, email: true, role: true, avatarUrl: true } },
+        seller: { select: { id: true, name: true, email: true, role: true, avatarUrl: true } },
         messages: {
           orderBy: { createdAt: "asc" },
-          include: { sender: { select: { id: true, name: true } } },
+          include: { sender: { select: { id: true, name: true, role: true } } },
         },
       },
       orderBy: { lastMessageAt: "desc" },
     });
 
+    if (!conversation) {
+      conversation = await prisma.conversation.findFirst({
+        where: {
+          OR: [
+            { buyerId: req.user.id, sellerId: targetSellerId },
+            { buyerId: targetSellerId, sellerId: req.user.id },
+          ],
+        },
+        include: {
+          land: true,
+          project: true,
+          buyer: { select: { id: true, name: true, email: true, role: true, avatarUrl: true } },
+          seller: { select: { id: true, name: true, email: true, role: true, avatarUrl: true } },
+          messages: {
+            orderBy: { createdAt: "asc" },
+            include: { sender: { select: { id: true, name: true, role: true } } },
+          },
+        },
+        orderBy: { lastMessageAt: "desc" },
+      });
+    }
+
     if (conversation) {
-      // Update landId or projectId context if provided on the existing thread
       if (targetLand || targetProject) {
         await prisma.conversation.update({
           where: { id: conversation.id },
@@ -79,13 +100,13 @@ export async function startOrGetConversation(req, res, next) {
         });
       }
 
-      // Add the new message to the existing conversation instead of creating a duplicate thread
       if (initialMessage && initialMessage.trim()) {
         await prisma.message.create({
           data: {
             conversationId: conversation.id,
             senderId: req.user.id,
             body: initialMessage.trim(),
+            isRead: false,
           },
         });
         await prisma.conversation.update({
@@ -94,22 +115,20 @@ export async function startOrGetConversation(req, res, next) {
         });
       }
 
-      // Re-fetch conversation with all updated messages
       conversation = await prisma.conversation.findUnique({
         where: { id: conversation.id },
         include: {
           land: true,
           project: true,
-          buyer: { select: { id: true, name: true, avatarUrl: true } },
-          seller: { select: { id: true, name: true, avatarUrl: true } },
+          buyer: { select: { id: true, name: true, email: true, role: true, avatarUrl: true } },
+          seller: { select: { id: true, name: true, email: true, role: true, avatarUrl: true } },
           messages: {
             orderBy: { createdAt: "asc" },
-            include: { sender: { select: { id: true, name: true } } },
+            include: { sender: { select: { id: true, name: true, role: true } } },
           },
         },
       });
     } else {
-      // Create a brand new single conversation between buyer and seller
       conversation = await prisma.conversation.create({
         data: {
           buyerId: req.user.id,
@@ -121,6 +140,7 @@ export async function startOrGetConversation(req, res, next) {
                 create: {
                   senderId: req.user.id,
                   body: initialMessage.trim(),
+                  isRead: false,
                 },
               }
             : undefined,
@@ -128,11 +148,11 @@ export async function startOrGetConversation(req, res, next) {
         include: {
           land: true,
           project: true,
-          buyer: { select: { id: true, name: true, avatarUrl: true } },
-          seller: { select: { id: true, name: true, avatarUrl: true } },
+          buyer: { select: { id: true, name: true, email: true, role: true, avatarUrl: true } },
+          seller: { select: { id: true, name: true, email: true, role: true, avatarUrl: true } },
           messages: {
             orderBy: { createdAt: "asc" },
-            include: { sender: { select: { id: true, name: true } } },
+            include: { sender: { select: { id: true, name: true, role: true } } },
           },
         },
       });
@@ -163,30 +183,19 @@ export async function listConversations(req, res, next) {
       orderBy: { lastMessageAt: "desc" },
     });
 
-    // Deduplicate and consolidate pre-existing duplicate conversation records per other party
     const conversationsByParty = new Map();
 
     for (const c of rawConversations) {
       const otherParty = c.buyerId === req.user.id ? c.seller : c.buyer;
       if (!otherParty) continue;
 
-      const key = `${otherParty.id}_${c.landId || "none"}_${c.projectId || "none"}`;
+      const isSupport =
+        otherParty.role === "ADMIN" ||
+        (c.landId == null && c.projectId == null && (c.buyer?.role === "ADMIN" || c.seller?.role === "ADMIN"));
+
+      const key = isSupport ? "support" : `${otherParty.id}_${c.landId || "none"}_${c.projectId || "none"}`;
       if (!conversationsByParty.has(key)) {
         conversationsByParty.set(key, c);
-      } else {
-        // Merge duplicate thread: move messages to primary conversation and delete duplicate thread
-        const primary = conversationsByParty.get(key);
-        try {
-          await prisma.message.updateMany({
-            where: { conversationId: c.id },
-            data: { conversationId: primary.id },
-          });
-          await prisma.conversation.delete({
-            where: { id: c.id },
-          });
-        } catch (mergeErr) {
-          console.warn("Could not merge duplicate conversation record:", mergeErr);
-        }
       }
     }
 
@@ -218,10 +227,10 @@ export async function listConversations(req, res, next) {
           landTitle: c.land ? c.land.title : c.project ? c.project.title : isSupport ? "Support Inquiry" : null,
           isSupport: Boolean(isSupport),
           type: isSupport ? "SUPPORT" : "DIRECT",
-          otherPartyId: isSupport ? "support" : otherParty.id,
-          otherPartyName: isSupport ? "Support (Admin)" : otherParty.name,
-          otherPartyRole: isSupport ? "ADMIN" : otherParty.role,
-          otherPartyAvatarUrl: otherParty.avatarUrl,
+          otherPartyId: isSupport ? "support" : otherParty?.id || "unknown",
+          otherPartyName: isSupport ? "Support (Admin)" : otherParty?.name || "User",
+          otherPartyRole: isSupport ? "ADMIN" : otherParty?.role || "CLIENT",
+          otherPartyAvatarUrl: otherParty?.avatarUrl || null,
           lastMessageText: lastMsg ? lastMsg.body : "",
           lastMessageAt: lastMsg ? lastMsg.createdAt : c.lastMessageAt,
           unreadCount,
@@ -239,11 +248,11 @@ export async function getConversation(req, res, next) {
   try {
     const { id } = req.params;
 
-    if (id === "support") {
+    if (id === "support" || (typeof id === "string" && id.startsWith("support_"))) {
       return getSupportConversation(req, res, next);
     }
 
-    const conversation = await prisma.conversation.findUnique({
+    let conversation = await prisma.conversation.findUnique({
       where: { id },
       include: {
         land: true,
@@ -258,17 +267,40 @@ export async function getConversation(req, res, next) {
     });
 
     if (!conversation) {
+      // Fallback: check if id is a participant ID
+      conversation = await prisma.conversation.findFirst({
+        where: {
+          OR: [
+            { buyerId: req.user.id, sellerId: id },
+            { buyerId: id, sellerId: req.user.id },
+          ],
+        },
+        include: {
+          land: true,
+          project: true,
+          buyer: { select: { id: true, name: true, email: true, avatarUrl: true, role: true } },
+          seller: { select: { id: true, name: true, email: true, avatarUrl: true, role: true } },
+          messages: {
+            orderBy: { createdAt: "asc" },
+            include: { sender: { select: { id: true, name: true, role: true } } },
+          },
+        },
+        orderBy: { lastMessageAt: "desc" },
+      });
+    }
+
+    if (!conversation) {
       throw new AppError("Conversation not found.", 404);
     }
 
-    if (conversation.buyerId !== req.user.id && conversation.sellerId !== req.user.id) {
+    if (conversation.buyerId !== req.user.id && conversation.sellerId !== req.user.id && req.user.role !== "ADMIN") {
       throw new AppError("Access denied to this conversation.", 403);
     }
 
-    // Mark messages as read
+    // Mark messages from the other party as read
     await prisma.message.updateMany({
       where: {
-        conversationId: id,
+        conversationId: conversation.id,
         senderId: { not: req.user.id },
         isRead: false,
       },
@@ -291,24 +323,39 @@ export async function sendMessage(req, res, next) {
       throw new AppError("Message body is required.", 400);
     }
 
-    if (id === "support") {
+    if (id === "support" || (typeof id === "string" && id.startsWith("support_"))) {
       req.body.message = textToSend;
       return sendSupportMessage(req, res, next);
     }
 
-    const conversation = await prisma.conversation.findUnique({
+    let conversation = await prisma.conversation.findUnique({
       where: { id },
       include: {
-        buyer: { select: { id: true, name: true, role: true } },
-        seller: { select: { id: true, name: true, role: true } },
+        buyer: { select: { id: true, name: true, role: true, email: true } },
+        seller: { select: { id: true, name: true, role: true, email: true } },
       },
     });
+
+    if (!conversation) {
+      conversation = await prisma.conversation.findFirst({
+        where: {
+          OR: [
+            { buyerId: req.user.id, sellerId: id },
+            { buyerId: id, sellerId: req.user.id },
+          ],
+        },
+        include: {
+          buyer: { select: { id: true, name: true, role: true, email: true } },
+          seller: { select: { id: true, name: true, role: true, email: true } },
+        },
+      });
+    }
 
     if (!conversation) {
       throw new AppError("Conversation not found.", 404);
     }
 
-    if (conversation.buyerId !== req.user.id && conversation.sellerId !== req.user.id) {
+    if (conversation.buyerId !== req.user.id && conversation.sellerId !== req.user.id && req.user.role !== "ADMIN") {
       throw new AppError("Access denied.", 403);
     }
 
@@ -319,7 +366,7 @@ export async function sendMessage(req, res, next) {
 
     const message = await prisma.message.create({
       data: {
-        conversationId: id,
+        conversationId: conversation.id,
         senderId: req.user.id,
         body: textToSend,
         isRead: false,
@@ -330,7 +377,7 @@ export async function sendMessage(req, res, next) {
     });
 
     await prisma.conversation.update({
-      where: { id },
+      where: { id: conversation.id },
       data: { lastMessageAt: new Date() },
     });
 
@@ -350,7 +397,7 @@ export async function sendMessage(req, res, next) {
       }
     }
 
-    // If message is sent from user to Admin in a Support conversation, broadcast SSE
+    // Broadcast SSE
     if (isSupport && req.user.role !== "ADMIN") {
       bidEvents.broadcast({
         type: "SUPPORT_MESSAGE_RECEIVED",
@@ -362,10 +409,21 @@ export async function sendMessage(req, res, next) {
         message: textToSend,
         timestamp: new Date().toISOString(),
       });
+    } else {
+      bidEvents.broadcast({
+        type: "MESSAGE_RECEIVED",
+        conversationId: conversation.id,
+        senderId: req.user.id,
+        senderName: req.user.name,
+        recipientId: otherParty?.id,
+        message: textToSend,
+        timestamp: new Date().toISOString(),
+      });
     }
 
     res.status(201).json({
       id: message.id,
+      conversationId: conversation.id,
       senderId: message.senderId,
       sender: "me",
       senderName: "You",
@@ -407,7 +465,7 @@ export async function getSupportConversation(req, res, next) {
       });
     }
 
-    const conversation = await prisma.conversation.findFirst({
+    let conversation = await prisma.conversation.findFirst({
       where: {
         OR: [
           { buyerId: req.user.id, sellerId: admin.id },
@@ -429,14 +487,23 @@ export async function getSupportConversation(req, res, next) {
     });
 
     if (!conversation) {
-      return res.json({
-        id: null,
-        isSupport: true,
-        type: "SUPPORT",
-        otherPartyId: "support",
-        otherPartyName: "Support (Admin)",
-        otherPartyRole: "ADMIN",
-        messages: [],
+      conversation = await prisma.conversation.create({
+        data: {
+          buyerId: req.user.id,
+          sellerId: admin.id,
+          landId: null,
+          projectId: null,
+        },
+        include: {
+          buyer: { select: { id: true, name: true, email: true, avatarUrl: true, role: true } },
+          seller: { select: { id: true, name: true, email: true, avatarUrl: true, role: true } },
+          messages: {
+            orderBy: { createdAt: "asc" },
+            include: {
+              sender: { select: { id: true, name: true, role: true } },
+            },
+          },
+        },
       });
     }
 
@@ -479,7 +546,6 @@ export async function sendSupportMessage(req, res, next) {
       throw new AppError("No support recipient found.", 500);
     }
 
-    // Find or create single persistent conversation with Admin
     let conversation = await prisma.conversation.findFirst({
       where: {
         OR: [
@@ -519,7 +585,6 @@ export async function sendSupportMessage(req, res, next) {
       data: { lastMessageAt: new Date() },
     });
 
-    // Stream Chat sync
     const channelId = `support_${req.user.id}`;
     if (streamServerClient) {
       try {
@@ -542,7 +607,6 @@ export async function sendSupportMessage(req, res, next) {
       }
     }
 
-    // In-app notification for Admin
     try {
       await prisma.notification.create({
         data: {
@@ -556,7 +620,6 @@ export async function sendSupportMessage(req, res, next) {
       // ignore
     }
 
-    // Broadcast SSE to live Admin dashboards
     bidEvents.broadcast({
       type: "SUPPORT_MESSAGE_RECEIVED",
       conversationId: conversation.id,
@@ -611,7 +674,7 @@ function formatConversationDetail(c, currentUserId) {
     type: isSupport ? "SUPPORT" : "DIRECT",
     otherPartyId: isSupport ? "support" : otherParty?.id || "unknown",
     otherPartyName: isSupport ? "Support (Admin)" : otherParty?.name || "User",
-    otherPartyRole: isSupport ? "ADMIN" : otherParty?.role || "USER",
+    otherPartyRole: isSupport ? "ADMIN" : otherParty?.role || "CLIENT",
     otherPartyAvatarUrl: otherParty?.avatarUrl || null,
     messages: (c.messages || []).map((m) => ({
       id: m.id,
@@ -630,4 +693,3 @@ function formatConversationDetail(c, currentUserId) {
     })),
   };
 }
-
