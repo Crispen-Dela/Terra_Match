@@ -32,18 +32,38 @@ function createPriceIcon(price) {
   });
 }
 
-function MapView({ validLands, defaultCenter, setSelectedLand }) {
+const MAP_LAYERS = {
+  satellite: {
+    name: "Satellite",
+    url: "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
+    attribution: "Tiles &copy; Esri &mdash; Source: Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-EGP, and the GIS User Community",
+  },
+  topo: {
+    name: "Topographic",
+    url: "https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png",
+    attribution: 'Map data: &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+  },
+  street: {
+    name: "Street",
+    url: "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
+    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+  },
+};
+
+function MapView({ validLands, defaultCenter, setSelectedLand, mapType = "satellite" }) {
+  const layer = MAP_LAYERS[mapType] || MAP_LAYERS.satellite;
+
   return (
     <MapContainer
-      key="terramatch-main-map-container"
+      key={`terramatch-main-map-${mapType}`}
       center={defaultCenter}
       zoom={11}
       scrollWheelZoom={false}
       style={{ height: "100%", width: "100%" }}
     >
       <TileLayer
-        attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-        url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+        attribution={layer.attribution}
+        url={layer.url}
       />
 
       {validLands.map((land) => {
@@ -53,6 +73,7 @@ function MapView({ validLands, defaultCenter, setSelectedLand }) {
           land.price ||
           (land.totalPrice ? `GH₵${land.totalPrice.toLocaleString()}` : "Price on request");
         const landName = land.name || land.title || "Land Plot";
+        const landLocation = land.location || land.address || "Greater Accra";
         const rawLandImage = land.image || (land.images && land.images[0]) || "";
         const landImage =
           rawLandImage && !rawLandImage.startsWith("blob:")
@@ -103,6 +124,7 @@ function MapView({ validLands, defaultCenter, setSelectedLand }) {
 export default function LandMapExplorer({ lands = [], onViewAll, sectionId }) {
   const [selectedLand, setSelectedLand] = useState(null);
   const [mounted, setMounted] = useState(false);
+  const [mapType, setMapType] = useState("satellite");
 
   useEffect(() => {
     setMounted(true);
@@ -115,15 +137,15 @@ export default function LandMapExplorer({ lands = [], onViewAll, sectionId }) {
     <section id={sectionId} className="container-page pb-12">
       <div className="grid gap-6 lg:grid-cols-[1.5fr_1fr]">
         {/* Interactive Leaflet Map */}
-        <div className="relative isolate z-0 aspect-[4/5] overflow-hidden rounded-2xl border border-ink-900/10 bg-slate-100 sm:aspect-[4/3] shadow-inner">
+        <div className="relative isolate z-0 aspect-[4/5] overflow-hidden rounded-2xl border border-ink-900/10 bg-slate-900 sm:aspect-[4/3] shadow-inner">
           {mounted ? (
             <ErrorBoundary
               fallback={
-                <div className="flex h-full w-full flex-col items-center justify-center bg-slate-100 p-6 text-center">
-                  <span className="text-sm font-semibold text-ink-800">
+                <div className="flex h-full w-full flex-col items-center justify-center bg-slate-900 p-6 text-center text-white">
+                  <span className="text-sm font-semibold">
                     Ghana Land Map (Satellite View)
                   </span>
-                  <p className="mt-1 text-xs text-ink-500">
+                  <p className="mt-1 text-xs text-slate-400">
                     Browsing {validLands.length} verified listings in Greater Accra
                   </p>
                 </div>
@@ -133,20 +155,61 @@ export default function LandMapExplorer({ lands = [], onViewAll, sectionId }) {
                 validLands={validLands}
                 defaultCenter={defaultCenter}
                 setSelectedLand={setSelectedLand}
+                mapType={mapType}
               />
             </ErrorBoundary>
           ) : (
-            <div className="flex h-full w-full items-center justify-center bg-slate-100 text-xs text-slate-500">
-              Loading interactive map...
+            <div className="flex h-full w-full items-center justify-center bg-slate-900 text-xs text-slate-400">
+              Loading interactive satellite map...
             </div>
           )}
 
           {/* Environmental GIS Indicator Overlay */}
-          <div className="pointer-events-none absolute left-3 top-3 z-10 rounded-xl bg-white/90 px-3 py-1.5 shadow-md backdrop-blur-sm">
+          <div className="pointer-events-none absolute left-3 top-3 z-10 rounded-xl bg-white/95 px-3 py-1.5 shadow-md backdrop-blur-sm border border-ink-900/10">
             <span className="flex items-center gap-1.5 text-[11px] font-bold text-ink-800">
               <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
               Live GIS Satellite & Topographic Map
             </span>
+          </div>
+
+          {/* Layer Switcher */}
+          <div className="absolute right-3 top-3 z-10 flex rounded-lg bg-white/95 p-1 shadow-md backdrop-blur-sm border border-ink-900/10">
+            <button
+              type="button"
+              onClick={() => setMapType("satellite")}
+              className={cn(
+                "rounded-md px-2.5 py-1 text-[11px] font-bold transition-colors",
+                mapType === "satellite"
+                  ? "bg-forest-600 text-white shadow-xs"
+                  : "text-ink-600 hover:text-ink-900"
+              )}
+            >
+              Satellite
+            </button>
+            <button
+              type="button"
+              onClick={() => setMapType("topo")}
+              className={cn(
+                "rounded-md px-2.5 py-1 text-[11px] font-bold transition-colors",
+                mapType === "topo"
+                  ? "bg-forest-600 text-white shadow-xs"
+                  : "text-ink-600 hover:text-ink-900"
+              )}
+            >
+              Topography
+            </button>
+            <button
+              type="button"
+              onClick={() => setMapType("street")}
+              className={cn(
+                "rounded-md px-2.5 py-1 text-[11px] font-bold transition-colors",
+                mapType === "street"
+                  ? "bg-forest-600 text-white shadow-xs"
+                  : "text-ink-600 hover:text-ink-900"
+              )}
+            >
+              Street
+            </button>
           </div>
         </div>
 
