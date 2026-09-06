@@ -66,31 +66,55 @@ export default function ClientDashboard({ data, onRefresh }) {
   const [showPlansModal, setShowPlansModal] = useState(false);
   const [withdrawingBidId, setWithdrawingBidId] = useState(null);
   const [actionError, setActionError] = useState("");
+  const [actionSuccess, setActionSuccess] = useState("");
   const { user, plan, allPlans, verification, profileCompletion, stats, bids, projects, recommendedLands, recommendedContractors, activity } = data;
 
-  // Real-time SSE subscription for live bid updates
+  // Local state for immediate optimistic updates when withdrawing bids
+  const [localBids, setLocalBids] = useState(bids?.all || []);
+
   useEffect(() => {
-    const unsubscribe = subscribeToBidEvents(
-      (event) => {
+    setLocalBids(bids?.all || []);
+  }, [bids]);
+
+  // Real-time SSE subscription for live bid updates (fixed single object signature)
+  useEffect(() => {
+    const unsubscribe = subscribeToBidEvents({
+      userId: user?.id,
+      onEvent: (event) => {
         if (event?.type === "BID_PLACED" || event?.type === "BID_STATUS_CHANGED") {
           if (onRefresh) onRefresh();
         }
       },
-      { userId: user?.id }
-    );
+    });
     return () => unsubscribe();
   }, [user?.id, onRefresh]);
 
-  const handleWithdrawBid = async (bidId) => {
-    if (!window.confirm("Are you sure you want to withdraw this bid?")) return;
+  const handleWithdrawBid = async (bidId, bidItem) => {
+    const landTitle = bidItem?.land?.title || "this land parcel";
+    const amountFormatted = bidItem?.amount ? ` of GHS ${bidItem.amount.toLocaleString()}` : "";
+    
+    if (!window.confirm(`Are you sure you want to withdraw your bid${amountFormatted} on "${landTitle}"?`)) {
+      return;
+    }
+
     setWithdrawingBidId(bidId);
     setActionError("");
+    setActionSuccess("");
+
+    // Optimistic UI update: instantly mark as WITHDRAWN in the client view
+    setLocalBids((prev) =>
+      prev.map((b) => (b.id === bidId ? { ...b, status: "WITHDRAWN" } : b))
+    );
+
     try {
       await bidApi.updateStatus(bidId, "WITHDRAWN");
+      setActionSuccess(`Your bid on "${landTitle}" has been successfully withdrawn.`);
       if (onRefresh) await onRefresh();
     } catch (err) {
       console.error("Failed to withdraw bid:", err);
-      setActionError(err.message || "Failed to withdraw bid.");
+      // Revert optimistic state if server call fails
+      setLocalBids(bids?.all || []);
+      setActionError(err.message || "Failed to withdraw bid. Please try again.");
     } finally {
       setWithdrawingBidId(null);
     }
@@ -118,20 +142,20 @@ export default function ClientDashboard({ data, onRefresh }) {
       <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-3 sm:gap-5 items-stretch">
         <DashboardStatsCard
           title="Active Bids"
-          value={stats?.activeBids ?? 0}
+          value={localBids.filter((b) => b.status === "ACTIVE").length}
           subtitle="Auctions you are winning"
           icon={GavelIcon}
-          badgeText={stats?.activeBids > 0 ? "Leading" : "None active"}
+          badgeText={localBids.filter((b) => b.status === "ACTIVE").length > 0 ? "Leading" : "None active"}
           badgeVariant="forest"
           to="/explore-land"
         />
         <DashboardStatsCard
           title="Outbid Alerts"
-          value={stats?.outbidBids ?? 0}
+          value={localBids.filter((b) => b.status === "OUTBID").length}
           subtitle="Auctions needing higher bids"
           icon={MapPinIcon}
-          badgeText={stats?.outbidBids > 0 ? "Action Needed" : "All Clear"}
-          badgeVariant={stats?.outbidBids > 0 ? "amber" : "forest"}
+          badgeText={localBids.filter((b) => b.status === "OUTBID").length > 0 ? "Action Needed" : "All Clear"}
+          badgeVariant={localBids.filter((b) => b.status === "OUTBID").length > 0 ? "amber" : "forest"}
         />
         <DashboardStatsCard
           title="Conversations"
@@ -160,13 +184,35 @@ export default function ClientDashboard({ data, onRefresh }) {
               </Button>
             </div>
 
-            {actionError && (
-              <div className="mt-3 rounded-xl bg-rose-50 p-3 text-xs font-semibold text-rose-700 border border-rose-200">
-                {actionError}
+            {/* Success Feedback Alert */}
+            {actionSuccess && (
+              <div className="mt-3 flex items-center justify-between rounded-xl bg-emerald-50 p-3 text-xs font-semibold text-emerald-800 border border-emerald-200">
+                <span>✓ {actionSuccess}</span>
+                <button
+                  type="button"
+                  onClick={() => setActionSuccess("")}
+                  className="text-emerald-700 hover:text-emerald-900 text-xs ml-2"
+                >
+                  ✕
+                </button>
               </div>
             )}
 
-            {bids?.all?.length === 0 ? (
+            {/* Error Feedback Alert */}
+            {actionError && (
+              <div className="mt-3 flex items-center justify-between rounded-xl bg-rose-50 p-3 text-xs font-semibold text-rose-700 border border-rose-200">
+                <span>⚠️ {actionError}</span>
+                <button
+                  type="button"
+                  onClick={() => setActionError("")}
+                  className="text-rose-700 hover:text-rose-900 text-xs ml-2"
+                >
+                  ✕
+                </button>
+              </div>
+            )}
+
+            {localBids.length === 0 ? (
               <div className="rounded-xl border border-dashed border-ink-900/15 bg-mist-50/50 p-8 my-4 text-center">
                 <p className="text-sm font-semibold text-ink-800">You haven't placed any land bids yet</p>
                 <p className="mt-1 text-xs text-ink-500">
@@ -178,71 +224,82 @@ export default function ClientDashboard({ data, onRefresh }) {
               </div>
             ) : (
               <div className="mt-2 divide-y divide-ink-900/5">
-                {bids.all.map((b) => (
-                  <div key={b.id} className="flex flex-col gap-2.5 py-3.5 sm:flex-row sm:items-center sm:justify-between">
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-2">
-                        <h3 className="truncate font-bold text-ink-900">{b.land?.title}</h3>
-                        {b.createdAt && (
-                          <span className="text-[10px] text-ink-400">
-                            • {new Date(b.createdAt).toLocaleDateString()}
+                {localBids.map((b) => {
+                  const canWithdraw = b.status === "ACTIVE" || b.status === "OUTBID" || b.status === "PENDING";
+                  return (
+                    <div key={b.id} className="flex flex-col gap-2.5 py-3.5 sm:flex-row sm:items-center sm:justify-between">
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-2">
+                          <h3 className="truncate font-bold text-ink-900">{b.land?.title}</h3>
+                          {b.createdAt && (
+                            <span className="text-[10px] text-ink-400">
+                              • {new Date(b.createdAt).toLocaleDateString()}
+                            </span>
+                          )}
+                        </div>
+                        <p className="mt-0.5 truncate text-xs text-ink-600">
+                          {b.land?.district}, {b.land?.region} {b.land?.owner?.name ? `• Owner: ${b.land.owner.name}` : ""}
+                        </p>
+                        <div className="mt-1.5 flex flex-wrap items-center gap-2 text-xs">
+                          <span className="font-bold text-forest-700">
+                            Your Bid: GHS {b.amount?.toLocaleString()}
                           </span>
-                        )}
+                          <span className="text-ink-300">•</span>
+                          <span className="text-ink-500">
+                            Top: GHS {b.land?.currentBid?.toLocaleString() || b.amount?.toLocaleString()}
+                          </span>
+                        </div>
                       </div>
-                      <p className="mt-0.5 truncate text-xs text-ink-600">
-                        {b.land?.district}, {b.land?.region} {b.land?.owner?.name ? `• Owner: ${b.land.owner.name}` : ""}
-                      </p>
-                      <div className="mt-1.5 flex flex-wrap items-center gap-2 text-xs">
-                        <span className="font-bold text-forest-700">
-                          Your Bid: GHS {b.amount?.toLocaleString()}
-                        </span>
-                        <span className="text-ink-300">•</span>
-                        <span className="text-ink-500">
-                          Top: GHS {b.land?.currentBid?.toLocaleString() || b.amount?.toLocaleString()}
-                        </span>
-                      </div>
-                    </div>
 
-                    <div className="flex shrink-0 flex-wrap items-center gap-2">
-                      <span
-                        className={cn(
-                          "shrink-0 whitespace-nowrap rounded-md px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider",
-                          b.status === "ACTIVE" && "bg-emerald-100 text-emerald-800",
-                          b.status === "OUTBID" && "bg-amber-100 text-amber-800",
-                          b.status === "ACCEPTED" && "bg-forest-100 text-forest-800",
-                          b.status === "REJECTED" && "bg-rose-100 text-rose-800",
-                          b.status === "WITHDRAWN" && "bg-slate-100 text-slate-600",
-                          b.status === "PENDING" && "bg-blue-100 text-blue-800"
-                        )}
-                      >
-                        {b.status}
-                      </span>
-
-                      {b.status === "ACTIVE" && (
-                        <button
-                          type="button"
-                          disabled={withdrawingBidId === b.id}
-                          onClick={() => handleWithdrawBid(b.id)}
-                          className="text-[11px] font-semibold text-rose-600 hover:text-rose-800 px-2 py-1"
+                      <div className="flex shrink-0 flex-wrap items-center gap-2">
+                        <span
+                          className={cn(
+                            "shrink-0 whitespace-nowrap rounded-md px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider",
+                            b.status === "ACTIVE" && "bg-emerald-100 text-emerald-800",
+                            b.status === "OUTBID" && "bg-amber-100 text-amber-800",
+                            b.status === "ACCEPTED" && "bg-forest-100 text-forest-800",
+                            b.status === "REJECTED" && "bg-rose-100 text-rose-800",
+                            b.status === "WITHDRAWN" && "bg-slate-100 text-slate-600 border border-slate-200",
+                            b.status === "PENDING" && "bg-blue-100 text-blue-800"
+                          )}
                         >
-                          {withdrawingBidId === b.id ? "..." : "Withdraw"}
-                        </button>
-                      )}
+                          {b.status}
+                        </span>
 
-                      <Button
-                        as={Link}
-                        to={`/messages?contact=${encodeURIComponent(b.land?.owner?.id || b.land?.ownerId || "")}&land=${encodeURIComponent(b.land?.id || b.landId || "")}`}
-                        variant="ghost"
-                        size="xs"
-                      >
-                        Chat
-                      </Button>
-                      <Button as={Link} to={`/explore-land/${b.land?.slug || b.land?.id}`} variant="secondary" size="xs">
-                        {b.status === "OUTBID" ? "Raise Bid" : "View Land"}
-                      </Button>
+                        {canWithdraw && (
+                          <button
+                            type="button"
+                            disabled={withdrawingBidId === b.id}
+                            onClick={() => handleWithdrawBid(b.id, b)}
+                            className="inline-flex items-center gap-1 rounded-md border border-rose-200 bg-rose-50 px-2.5 py-1 text-xs font-semibold text-rose-700 hover:bg-rose-100 hover:border-rose-300 transition-colors disabled:opacity-50 cursor-pointer"
+                            title="Withdraw this bid and release funds"
+                          >
+                            {withdrawingBidId === b.id ? (
+                              <>
+                                <span className="h-2.5 w-2.5 animate-spin rounded-full border-2 border-rose-700 border-t-transparent" />
+                                <span>Withdrawing...</span>
+                              </>
+                            ) : (
+                              <span>Withdraw Bid</span>
+                            )}
+                          </button>
+                        )}
+
+                        <Button
+                          as={Link}
+                          to={`/messages?contact=${encodeURIComponent(b.land?.owner?.id || b.land?.ownerId || "")}&land=${encodeURIComponent(b.land?.id || b.landId || "")}`}
+                          variant="ghost"
+                          size="xs"
+                        >
+                          Chat
+                        </Button>
+                        <Button as={Link} to={`/explore-land/${b.land?.slug || b.land?.id}`} variant="secondary" size="xs">
+                          {b.status === "OUTBID" ? "Raise Bid" : "View Land"}
+                        </Button>
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </div>

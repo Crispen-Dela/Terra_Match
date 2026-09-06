@@ -552,6 +552,59 @@ export async function updateBidStatus(req, res, next) {
         } catch (notifErr) {
           console.warn("Notification error:", notifErr.message);
         }
+      } else if (status === "WITHDRAWN") {
+        // If the withdrawn bid was the active top bid, recalculate top active bid on this land listing
+        const remainingBids = await tx.landBid.findMany({
+          where: {
+            landId: bid.landId,
+            id: { not: bid.id },
+            status: { in: ["ACTIVE", "OUTBID", "PENDING"] },
+          },
+          orderBy: { amount: "desc" },
+        });
+
+        if (remainingBids.length > 0) {
+          const topRemainingBid = remainingBids[0];
+          // Make sure top remaining bid is marked ACTIVE
+          await tx.landBid.update({
+            where: { id: topRemainingBid.id },
+            data: { status: "ACTIVE" },
+          });
+
+          const nextMin = topRemainingBid.amount + (bid.land?.bidIncrement || 5000);
+          await tx.landListing.update({
+            where: { id: bid.landId },
+            data: {
+              currentBid: topRemainingBid.amount,
+              minNextBid: nextMin,
+              bidsCount: { decrement: 1 },
+            },
+          });
+        } else {
+          // No active bids left on this land listing
+          await tx.landListing.update({
+            where: { id: bid.landId },
+            data: {
+              currentBid: null,
+              minNextBid: bid.land?.totalPrice,
+              bidsCount: 0,
+            },
+          });
+        }
+
+        // Notify land owner that bidder withdrew
+        try {
+          await tx.notification.create({
+            data: {
+              recipientId: bid.land.ownerId,
+              role: "LAND_OWNER",
+              type: "LAND_BID_UPDATE",
+              message: `${bid.bidder?.name || "A buyer"} withdrew their bid of GH₵${bid.amount.toLocaleString()} on your land "${bid.land.title}".`,
+            },
+          });
+        } catch (notifErr) {
+          console.warn("Notification error:", notifErr.message);
+        }
       }
 
       return uBid;
