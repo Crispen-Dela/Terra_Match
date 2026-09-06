@@ -1,5 +1,6 @@
-import { Link } from "react-router-dom";
+import { useState } from "react";
 import Button from "./Button";
+import ContactSupportModal from "./ContactSupportModal";
 import { cn } from "../../utils/cn";
 
 function HeadsetIcon({ className }) {
@@ -21,14 +22,29 @@ function HeadsetIcon({ className }) {
 export default function NeedHelpCard({
   description = "Our team is here to help you with any questions.",
 }) {
+  const [modalOpen, setModalOpen] = useState(false);
+
   return (
-    <div className="rounded-2xl border border-ink-900/10 bg-white p-5">
-      <h3 className="text-sm font-bold text-ink-900">Need Help?</h3>
-      <p className="mt-1.5 text-sm leading-relaxed text-ink-500">{description}</p>
-      <Button as={Link} to="/messages" variant="outline-dark" size="md" className="mt-3.5 w-full">
-        <HeadsetIcon className="h-4 w-4" />
-        Chat with Support
-      </Button>
-    </div>
+    <>
+      <div className="rounded-2xl border border-ink-900/10 bg-white p-5">
+        <h3 className="text-sm font-bold text-ink-900">Need Help?</h3>
+        <p className="mt-1.5 text-sm leading-relaxed text-ink-500">{description}</p>
+        <Button
+          type="button"
+          onClick={() => setModalOpen(true)}
+          variant="outline-dark"
+          size="md"
+          className="mt-3.5 w-full"
+        >
+          <HeadsetIcon className="h-4 w-4" />
+          Chat with Support
+        </Button>
+      </div>
+
+      <ContactSupportModal
+        isOpen={modalOpen}
+        onClose={() => setModalOpen(false)}
+      />
+    </>
   );
 }

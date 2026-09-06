@@ -17,6 +17,7 @@ import {
   listChats,
   getChatMessages,
   listSupportTickets,
+  getSupportConversation,
   updateSupportTicketStatus,
   replyToSupportTicket,
   listNotifications,
@@ -53,6 +54,7 @@ router.get("/chats/:id/messages", getChatMessages);
 
 // Support System
 router.get("/support", listSupportTickets);
+router.get("/support/:id", getSupportConversation);
 router.put("/support/:id/status", updateSupportTicketStatus);
 router.post("/support/:id/reply", replyToSupportTicket);
 

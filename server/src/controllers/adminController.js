@@ -3,6 +3,7 @@ import path from "path";
 import prisma from "../config/prisma.js";
 import { AppError } from "../middlewares/errorHandler.js";
 import { bidEvents } from "../config/events.js";
+import { streamServerClient } from "../config/stream.js";
 
 const STATE_FILE = path.join(process.cwd(), "system_state.json");
 
@@ -591,23 +592,273 @@ export async function getChatMessages(req, res, next) {
 }
 
 // ==========================================
-// SUPPORT TICKET ENDPOINTS
+// SUPPORT INBOX & CONVERSATION ENDPOINTS
 // ==========================================
 
 export async function listSupportTickets(req, res, next) {
   try {
-    const { status } = req.query;
-    const where = status && status !== "ALL" ? { status } : {};
+    const { status, search } = req.query;
 
-    const tickets = await prisma.supportTicket.findMany({
-      where,
+    const adminUsers = await prisma.user.findMany({
+      where: { role: "ADMIN" },
+      select: { id: true },
+    });
+    const adminIds = adminUsers.map((a) => a.id);
+
+    // 1. Fetch support conversations from Conversation & Message models
+    const conversations = await prisma.conversation.findMany({
+      where: {
+        OR: [
+          { buyerId: { in: adminIds } },
+          { sellerId: { in: adminIds } },
+        ],
+        landId: null,
+        projectId: null,
+      },
       include: {
-        user: { select: { id: true, name: true, email: true, role: true } },
-        replies: { include: { sender: { select: { id: true, name: true } } }, orderBy: { createdAt: "asc" } }
+        buyer: {
+          select: { id: true, name: true, email: true, phone: true, role: true, avatarUrl: true, ghanaCardVerified: true, createdAt: true },
+        },
+        seller: {
+          select: { id: true, name: true, email: true, phone: true, role: true, avatarUrl: true, ghanaCardVerified: true, createdAt: true },
+        },
+        messages: {
+          orderBy: { createdAt: "asc" },
+          include: {
+            sender: { select: { id: true, name: true, role: true } },
+          },
+        },
+      },
+      orderBy: { lastMessageAt: "desc" },
+    });
+
+    const formatted = conversations
+      .map((conv) => {
+        const clientUser = adminIds.includes(conv.buyerId) ? conv.seller : conv.buyer;
+        if (!clientUser) return null;
+
+        const msgs = conv.messages || [];
+        const lastMsg = msgs[msgs.length - 1];
+        const unreadCount = msgs.filter((m) => !adminIds.includes(m.senderId) && !m.isRead).length;
+
+        const latestSenderIsAdmin = lastMsg && adminIds.includes(lastMsg.senderId);
+        const threadStatus = unreadCount > 0 ? "NEW" : latestSenderIsAdmin ? "RESOLVED" : "IN_PROGRESS";
+
+        return {
+          id: conv.id,
+          conversationId: conv.id,
+          userId: clientUser.id,
+          name: clientUser.name,
+          email: clientUser.email,
+          phone: clientUser.phone,
+          role: clientUser.role,
+          avatarUrl: clientUser.avatarUrl,
+          ghanaCardVerified: Boolean(clientUser.ghanaCardVerified),
+          userCreatedAt: clientUser.createdAt,
+          user: clientUser,
+          subject: `Support: ${clientUser.name} (${clientUser.role})`,
+          category: "Account & Bidding Support",
+          message: msgs[0]?.body || "Support inquiry opened",
+          latestMessage: lastMsg ? lastMsg.body : "Support inquiry opened",
+          lastMessageAt: lastMsg ? lastMsg.createdAt : conv.lastMessageAt,
+          createdAt: conv.createdAt,
+          unreadCount,
+          status: threadStatus,
+          messages: msgs.map((m) => ({
+            id: m.id,
+            senderId: m.senderId,
+            senderName: adminIds.includes(m.senderId) ? "Support (Admin)" : (m.sender?.name || clientUser.name),
+            isAdmin: adminIds.includes(m.senderId),
+            senderRole: m.sender?.role || (adminIds.includes(m.senderId) ? "ADMIN" : clientUser.role),
+            message: m.body,
+            body: m.body,
+            isRead: m.isRead,
+            createdAt: m.createdAt,
+          })),
+          replies: msgs.filter((m) => adminIds.includes(m.senderId)).map((m) => ({
+            id: m.id,
+            senderId: m.senderId,
+            sender: { name: "Support (Admin)" },
+            message: m.body,
+            createdAt: m.createdAt,
+          })),
+        };
+      })
+      .filter(Boolean);
+
+    // Also fetch any tickets from SupportTicket model if any exist and not yet represented
+    const tickets = await prisma.supportTicket.findMany({
+      include: {
+        user: { select: { id: true, name: true, email: true, role: true, avatarUrl: true, ghanaCardVerified: true } },
+        replies: { include: { sender: { select: { id: true, name: true } } }, orderBy: { createdAt: "asc" } },
       },
       orderBy: { createdAt: "desc" },
     });
-    res.json(tickets);
+
+    // Merge ticket format
+    const ticketFormatted = tickets.map((t) => {
+      // If there's already a conversation for this user, skip to avoid duplicates
+      if (t.userId && formatted.some((f) => f.userId === t.userId)) {
+        return null;
+      }
+      return {
+        id: t.id,
+        conversationId: null,
+        userId: t.userId || t.id,
+        name: t.name || t.user?.name || "User",
+        email: t.email || t.user?.email || "user@example.com",
+        phone: t.user?.phone || null,
+        role: t.user?.role || "CLIENT",
+        avatarUrl: t.user?.avatarUrl || null,
+        ghanaCardVerified: Boolean(t.user?.ghanaCardVerified),
+        user: t.user || { id: t.userId || t.id, name: t.name, email: t.email, role: "CLIENT" },
+        subject: t.subject || "Support Inquiry",
+        category: t.category || "General",
+        message: t.message,
+        latestMessage: t.replies?.length > 0 ? t.replies[t.replies.length - 1].message : t.message,
+        lastMessageAt: t.replies?.length > 0 ? t.replies[t.replies.length - 1].createdAt : t.createdAt,
+        createdAt: t.createdAt,
+        unreadCount: t.status === "NEW" ? 1 : 0,
+        status: t.status,
+        messages: [
+          {
+            id: `orig-${t.id}`,
+            senderId: t.userId || "user",
+            senderName: t.name || "User",
+            isAdmin: false,
+            body: t.message,
+            message: t.message,
+            createdAt: t.createdAt,
+          },
+          ...(t.replies || []).map((r) => ({
+            id: r.id,
+            senderId: r.senderId,
+            senderName: "Support (Admin)",
+            isAdmin: true,
+            body: r.message,
+            message: r.message,
+            createdAt: r.createdAt,
+          })),
+        ],
+        replies: t.replies || [],
+      };
+    }).filter(Boolean);
+
+    let allResults = [...formatted, ...ticketFormatted].sort((a, b) => new Date(b.lastMessageAt) - new Date(a.lastMessageAt));
+
+    if (status && status !== "ALL") {
+      allResults = allResults.filter((t) => t.status === status);
+    }
+    if (search && search.trim()) {
+      const q = search.trim().toLowerCase();
+      allResults = allResults.filter(
+        (t) =>
+          t.name?.toLowerCase().includes(q) ||
+          t.email?.toLowerCase().includes(q) ||
+          t.latestMessage?.toLowerCase().includes(q) ||
+          t.role?.toLowerCase().includes(q)
+      );
+    }
+
+    res.json(allResults);
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function getSupportConversation(req, res, next) {
+  try {
+    const { id } = req.params;
+
+    const adminUsers = await prisma.user.findMany({
+      where: { role: "ADMIN" },
+      select: { id: true },
+    });
+    const adminIds = adminUsers.map((a) => a.id);
+
+    const conversation = await prisma.conversation.findUnique({
+      where: { id },
+      include: {
+        buyer: { select: { id: true, name: true, email: true, phone: true, role: true, avatarUrl: true, ghanaCardVerified: true, createdAt: true } },
+        seller: { select: { id: true, name: true, email: true, phone: true, role: true, avatarUrl: true, ghanaCardVerified: true, createdAt: true } },
+        messages: {
+          orderBy: { createdAt: "asc" },
+          include: {
+            sender: { select: { id: true, name: true, role: true } },
+          },
+        },
+      },
+    });
+
+    if (conversation) {
+      const clientUser = adminIds.includes(conversation.buyerId) ? conversation.seller : conversation.buyer;
+
+      // Mark all messages from the client as read by Admin
+      await prisma.message.updateMany({
+        where: {
+          conversationId: id,
+          senderId: clientUser.id,
+          isRead: false,
+        },
+        data: { isRead: true },
+      });
+
+      return res.json({
+        id: conversation.id,
+        conversationId: conversation.id,
+        user: clientUser,
+        messages: conversation.messages.map((m) => ({
+          id: m.id,
+          senderId: m.senderId,
+          senderName: adminIds.includes(m.senderId) ? "Support (Admin)" : (m.sender?.name || clientUser.name),
+          isAdmin: adminIds.includes(m.senderId),
+          senderRole: m.sender?.role || (adminIds.includes(m.senderId) ? "ADMIN" : clientUser.role),
+          body: m.body,
+          message: m.body,
+          isRead: m.isRead,
+          createdAt: m.createdAt,
+        })),
+      });
+    }
+
+    // Fallback to SupportTicket
+    const ticket = await prisma.supportTicket.findUnique({
+      where: { id },
+      include: {
+        user: { select: { id: true, name: true, email: true, phone: true, role: true, avatarUrl: true, ghanaCardVerified: true } },
+        replies: { include: { sender: { select: { id: true, name: true } } }, orderBy: { createdAt: "asc" } },
+      },
+    });
+
+    if (ticket) {
+      return res.json({
+        id: ticket.id,
+        conversationId: null,
+        user: ticket.user || { id: ticket.userId, name: ticket.name, email: ticket.email, role: "CLIENT" },
+        messages: [
+          {
+            id: `orig-${ticket.id}`,
+            senderId: ticket.userId || "user",
+            senderName: ticket.name || "User",
+            isAdmin: false,
+            body: ticket.message,
+            message: ticket.message,
+            createdAt: ticket.createdAt,
+          },
+          ...(ticket.replies || []).map((r) => ({
+            id: r.id,
+            senderId: r.senderId,
+            senderName: "Support (Admin)",
+            isAdmin: true,
+            body: r.message,
+            message: r.message,
+            createdAt: r.createdAt,
+          })),
+        ],
+      });
+    }
+
+    throw new AppError("Support thread not found.", 404);
   } catch (error) {
     next(error);
   }
@@ -618,25 +869,20 @@ export async function updateSupportTicketStatus(req, res, next) {
     const { id } = req.params;
     const { status } = req.body;
 
-    const ticket = await prisma.supportTicket.update({
-      where: { id },
-      data: { status },
-      include: {
-        user: { select: { id: true, name: true, email: true, role: true } },
-        replies: { include: { sender: { select: { id: true, name: true } } }, orderBy: { createdAt: "asc" } }
-      }
-    });
+    const ticket = await prisma.supportTicket.findUnique({ where: { id } });
+    if (ticket) {
+      const updated = await prisma.supportTicket.update({
+        where: { id },
+        data: { status },
+        include: {
+          user: { select: { id: true, name: true, email: true, role: true } },
+          replies: { include: { sender: { select: { id: true, name: true } } }, orderBy: { createdAt: "asc" } }
+        }
+      });
+      return res.json({ message: "Ticket status updated.", ticket: updated });
+    }
 
-    await prisma.auditLog.create({
-      data: {
-        adminId: req.user.id,
-        action: "UPDATE_SUPPORT_TICKET",
-        resource: `SupportTicket:${id}`,
-        details: `Status updated to ${status}`,
-      }
-    });
-
-    res.json({ message: "Ticket status updated.", ticket });
+    res.json({ message: "Status acknowledged." });
   } catch (error) {
     next(error);
   }
@@ -647,40 +893,148 @@ export async function replyToSupportTicket(req, res, next) {
     const { id } = req.params;
     const { message } = req.body;
 
-    if (!message) {
+    if (!message || !message.trim()) {
       throw new AppError("Message is required.", 400);
     }
 
-    const reply = await prisma.supportReply.create({
-      data: {
-        ticketId: id,
-        senderId: req.user.id,
-        message,
-      },
-      include: {
-        sender: { select: { id: true, name: true } }
-      }
+    const adminUsers = await prisma.user.findMany({
+      where: { role: "ADMIN" },
+      select: { id: true },
     });
-    
-    // Auto mark as IN_PROGRESS if NEW
-    const ticket = await prisma.supportTicket.findUnique({ where: { id } });
-    if (ticket.status === "NEW") {
-      await prisma.supportTicket.update({
+    const adminIds = adminUsers.map((a) => a.id);
+
+    // 1. Try finding conversation first
+    let conversation = await prisma.conversation.findUnique({
+      where: { id },
+      include: { buyer: true, seller: true },
+    });
+
+    if (conversation) {
+      const clientUser = adminIds.includes(conversation.buyerId) ? conversation.seller : conversation.buyer;
+
+      const newMsg = await prisma.message.create({
+        data: {
+          conversationId: id,
+          senderId: req.user.id,
+          body: message.trim(),
+          isRead: false,
+        },
+        include: {
+          sender: { select: { id: true, name: true, role: true } },
+        },
+      });
+
+      await prisma.conversation.update({
         where: { id },
-        data: { status: "IN_PROGRESS" }
+        data: { lastMessageAt: new Date() },
+      });
+
+      // Stream Chat sync
+      if (streamServerClient) {
+        try {
+          const channelId = `support_${clientUser.id}`;
+          const channel = streamServerClient.channel("messaging", channelId);
+          await channel.sendMessage({
+            text: message.trim(),
+            user_id: req.user.id,
+          });
+        } catch (streamErr) {
+          console.warn("Stream support reply warning:", streamErr.message);
+        }
+      }
+
+      // In-app notification
+      try {
+        await prisma.notification.create({
+          data: {
+            recipientId: clientUser.id,
+            role: clientUser.role,
+            type: "SYSTEM_ALERT",
+            message: `Support (Admin) replied: "${message.trim().length > 60 ? message.trim().slice(0, 57) + "..." : message.trim()}"`,
+          },
+        });
+      } catch (notifErr) {
+        console.warn("Notification error:", notifErr.message);
+      }
+
+      // Record audit log
+      try {
+        await prisma.auditLog.create({
+          data: {
+            adminId: req.user.id,
+            action: "REPLY_SUPPORT_CONVERSATION",
+            resource: `Conversation:${id}`,
+            details: `Admin ${req.user.name} sent a support reply to ${clientUser.name} (${clientUser.email})`,
+          },
+        });
+      } catch (auditErr) {
+        // ignore
+      }
+
+      // Broadcast SSE
+      bidEvents.broadcast({
+        type: "SUPPORT_REPLY_RECEIVED",
+        conversationId: id,
+        userId: clientUser.id,
+        senderName: "Support (Admin)",
+        message: message.trim(),
+        timestamp: new Date().toISOString(),
+      });
+
+      return res.status(201).json({
+        message: "Reply sent successfully.",
+        reply: {
+          id: newMsg.id,
+          senderId: newMsg.senderId,
+          senderName: "Support (Admin)",
+          isAdmin: true,
+          body: newMsg.body,
+          isRead: newMsg.isRead,
+          createdAt: newMsg.createdAt,
+        },
       });
     }
 
-    await prisma.auditLog.create({
-      data: {
-        adminId: req.user.id,
-        action: "REPLY_SUPPORT_TICKET",
-        resource: `SupportTicket:${id}`,
-        details: "Admin sent a reply.",
-      }
-    });
+    // 2. Fallback to SupportTicket
+    const ticket = await prisma.supportTicket.findUnique({ where: { id } });
+    if (ticket) {
+      const reply = await prisma.supportReply.create({
+        data: {
+          ticketId: id,
+          senderId: req.user.id,
+          message: message.trim(),
+        },
+        include: {
+          sender: { select: { id: true, name: true } },
+        },
+      });
 
-    res.status(201).json({ message: "Reply sent.", reply });
+      if (ticket.status === "NEW") {
+        await prisma.supportTicket.update({
+          where: { id },
+          data: { status: "IN_PROGRESS" },
+        });
+      }
+
+      if (ticket.userId) {
+        try {
+          await prisma.notification.create({
+            data: {
+              recipientId: ticket.userId,
+              role: "CLIENT",
+              type: "SYSTEM_ALERT",
+              message: `Support (Admin) replied to your ticket: "${message.trim()}"`,
+            },
+          });
+        } catch (notifErr) {
+          // ignore
+        }
+      }
+
+      return res.status(201).json({ message: "Reply sent.", reply });
+    }
+
+    throw new AppError("Support conversation or ticket not found.", 404);
   } catch (error) {
     next(error);
   }

@@ -1,5 +1,7 @@
 import prisma from "../config/prisma.js";
 import { AppError } from "../middlewares/errorHandler.js";
+import { streamServerClient, upsertStreamUser } from "../config/stream.js";
+import { bidEvents } from "../config/events.js";
 
 export async function startOrGetConversation(req, res, next) {
   try {
@@ -330,9 +332,9 @@ function formatConversationDetail(c, currentUserId) {
     id: c.id,
     landId: c.landId,
     landTitle: c.land?.title || c.project?.title || null,
-    otherPartyId: otherParty.id,
-    otherPartyName: otherParty.name,
-    messages: c.messages.map((m) => ({
+    otherPartyId: otherParty?.id || null,
+    otherPartyName: otherParty?.name || "User",
+    messages: (c.messages || []).map((m) => ({
       id: m.id,
       senderId: m.senderId,
       senderName: m.sender?.name || "",
@@ -341,4 +343,206 @@ function formatConversationDetail(c, currentUserId) {
       createdAt: m.createdAt,
     })),
   };
+}
+
+// ==========================================
+// USER SUPPORT CHAT ENDPOINTS
+// ==========================================
+
+export async function getSupportConversation(req, res, next) {
+  try {
+    const admin = await prisma.user.findFirst({
+      where: { role: "ADMIN" },
+      select: { id: true, name: true, email: true, role: true, avatarUrl: true },
+    });
+
+    if (!admin) {
+      return res.json({
+        id: null,
+        isSupport: true,
+        otherPartyName: "Support (Admin)",
+        messages: [],
+      });
+    }
+
+    const conversation = await prisma.conversation.findFirst({
+      where: {
+        OR: [
+          { buyerId: req.user.id, sellerId: admin.id },
+          { buyerId: admin.id, sellerId: req.user.id },
+        ],
+        landId: null,
+        projectId: null,
+      },
+      include: {
+        messages: {
+          orderBy: { createdAt: "asc" },
+          include: {
+            sender: { select: { id: true, name: true, role: true } },
+          },
+        },
+      },
+    });
+
+    if (!conversation) {
+      return res.json({
+        id: null,
+        isSupport: true,
+        otherPartyName: "Support (Admin)",
+        messages: [],
+      });
+    }
+
+    // Mark admin messages as read
+    await prisma.message.updateMany({
+      where: {
+        conversationId: conversation.id,
+        senderId: admin.id,
+        isRead: false,
+      },
+      data: { isRead: true },
+    });
+
+    return res.json({
+      id: conversation.id,
+      isSupport: true,
+      otherPartyId: admin.id,
+      otherPartyName: "Support (Admin)",
+      messages: (conversation.messages || []).map((m) => ({
+        id: m.id,
+        senderId: m.senderId,
+        senderName: m.senderId === req.user.id ? req.user.name : "Support (Admin)",
+        isAdmin: m.senderId === admin.id,
+        body: m.body,
+        message: m.body,
+        isRead: m.isRead,
+        createdAt: m.createdAt,
+      })),
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function sendSupportMessage(req, res, next) {
+  try {
+    const { message, body, initialMessage } = req.body;
+    const messageText = (message || body || initialMessage || "").trim();
+
+    if (!messageText) {
+      throw new AppError("Message is required.", 400);
+    }
+
+    let admin = await prisma.user.findFirst({
+      where: { role: "ADMIN" },
+    });
+
+    if (!admin) {
+      admin = await prisma.user.findFirst({
+        where: { id: { not: req.user.id } },
+      });
+    }
+
+    if (!admin) {
+      throw new AppError("No support recipient found.", 500);
+    }
+
+    // Find or create single persistent conversation with Admin
+    let conversation = await prisma.conversation.findFirst({
+      where: {
+        OR: [
+          { buyerId: req.user.id, sellerId: admin.id },
+          { buyerId: admin.id, sellerId: req.user.id },
+        ],
+        landId: null,
+        projectId: null,
+      },
+    });
+
+    if (!conversation) {
+      conversation = await prisma.conversation.create({
+        data: {
+          buyerId: req.user.id,
+          sellerId: admin.id,
+          landId: null,
+          projectId: null,
+        },
+      });
+    }
+
+    const newMsg = await prisma.message.create({
+      data: {
+        conversationId: conversation.id,
+        senderId: req.user.id,
+        body: messageText,
+        isRead: false,
+      },
+      include: {
+        sender: { select: { id: true, name: true, email: true, role: true } },
+      },
+    });
+
+    await prisma.conversation.update({
+      where: { id: conversation.id },
+      data: { lastMessageAt: new Date() },
+    });
+
+    // Stream Chat sync
+    const channelId = `support_${req.user.id}`;
+    if (streamServerClient) {
+      try {
+        await upsertStreamUser(req.user);
+        await upsertStreamUser(admin);
+
+        const channel = streamServerClient.channel("messaging", channelId, {
+          name: "Support (Admin)",
+          isSupport: true,
+          supportUserId: req.user.id,
+          members: [req.user.id, admin.id],
+        });
+        await channel.create();
+        await channel.sendMessage({
+          text: messageText,
+          user_id: req.user.id,
+        });
+      } catch (streamErr) {
+        console.warn("Stream support sync warning:", streamErr.message);
+      }
+    }
+
+    // In-app notification for Admin
+    try {
+      await prisma.notification.create({
+        data: {
+          recipientId: admin.id,
+          role: "ADMIN",
+          type: "SUPPORT_MESSAGE",
+          message: `Support message from ${req.user.name} (${req.user.email}): "${messageText.length > 60 ? messageText.slice(0, 57) + "..." : messageText}"`,
+        },
+      });
+    } catch (notifErr) {
+      // ignore
+    }
+
+    // Broadcast SSE to live Admin dashboards
+    bidEvents.broadcast({
+      type: "SUPPORT_MESSAGE_RECEIVED",
+      conversationId: conversation.id,
+      userId: req.user.id,
+      userName: req.user.name,
+      userEmail: req.user.email,
+      userRole: req.user.role,
+      message: messageText,
+      timestamp: new Date().toISOString(),
+    });
+
+    res.status(201).json({
+      success: true,
+      message: newMsg,
+      conversationId: conversation.id,
+      channelId,
+    });
+  } catch (error) {
+    next(error);
+  }
 }

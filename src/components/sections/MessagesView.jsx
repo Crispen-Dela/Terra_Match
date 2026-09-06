@@ -254,7 +254,15 @@ export default function MessagesView() {
                     {selected.isSupport ? <ShieldIcon className="h-4 w-4" /> : selected.avatarInitials}
                   </span>
                   <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm font-semibold text-ink-900">{selected.name}</p>
+                    <div className="flex items-center gap-1.5">
+                      <p className="truncate text-sm font-semibold text-ink-900">{selected.name}</p>
+                      {selected.isSupport && (
+                        <span className="inline-flex items-center gap-1 rounded bg-forest-50 px-1.5 py-0.5 text-[10px] font-bold text-forest-700 border border-forest-200">
+                          <ShieldIcon className="h-3 w-3" />
+                          Official
+                        </span>
+                      )}
+                    </div>
                     <p className="truncate text-xs text-ink-500">{selected.subtitle}</p>
                   </div>
                   {selected.isBuyNowRequest && (
@@ -270,15 +278,31 @@ export default function MessagesView() {
 
                 <div className="flex-1 space-y-3 overflow-y-auto px-4 py-5">
                   {(!selected.messages || selected.messages.length === 0) && (
-                    <p className="pt-6 text-center text-xs text-ink-400">
-                      Say hello to start chatting with {selected.name}.
-                    </p>
+                    <div className="pt-8 text-center">
+                      <span className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-forest-50 text-forest-600 mb-2">
+                        <ShieldIcon className="h-6 w-6" />
+                      </span>
+                      <p className="text-sm font-semibold text-ink-900">
+                        {selected.isSupport ? "TerraMatch Platform Support" : `Chat with ${selected.name}`}
+                      </p>
+                      <p className="mt-1 text-xs text-ink-500 max-w-sm mx-auto">
+                        {selected.isSupport
+                          ? "How can we help you today? Send a message below and our support team will reply promptly."
+                          : `Say hello to start chatting with ${selected.name}.`}
+                      </p>
+                    </div>
                   )}
                   {selected.messages?.map((m) => (
                     <div
                       key={m.id}
                       className={cn("flex flex-col", m.sender === "me" ? "items-end" : "items-start")}
                     >
+                      {m.sender !== "me" && selected.isSupport && (
+                        <span className="mb-1 text-[11px] font-bold text-forest-700 flex items-center gap-1">
+                          <ShieldIcon className="h-3 w-3" />
+                          Support (Admin)
+                        </span>
+                      )}
                       <div
                         className={cn(
                           "max-w-[80%] rounded-2xl px-4 py-2.5 text-sm leading-relaxed",

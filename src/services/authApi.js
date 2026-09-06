@@ -67,6 +67,7 @@ export const adminApi = {
     const q = new URLSearchParams(params || {}).toString();
     return api.get(`/api/admin/support${q ? `?${q}` : ""}`);
   },
+  getSupportConversation: (id) => api.get(`/api/admin/support/${id}`),
   updateSupportTicketStatus: (id, status) => api.put(`/api/admin/support/${id}/status`, { status }),
   replyToSupportTicket: (id, message) => api.post(`/api/admin/support/${id}/reply`, { message }),
   
@@ -80,6 +81,11 @@ export const adminApi = {
 export const systemApi = {
   getStatus: () => api.get("/api/system/status", { skipAuth: true }),
   toggleMaintenance: (data) => api.post("/api/admin/system/toggle-maintenance", data),
+};
+
+export const supportApi = {
+  sendMessage: (message) => api.post("/api/conversations/support/message", { message }),
+  getConversation: () => api.get("/api/conversations/support"),
 };
 
 export const uploadApi = {

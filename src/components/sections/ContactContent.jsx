@@ -1,7 +1,9 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import Button from "../common/Button";
 import Badge from "../common/Badge";
+import { useAuth } from "../../context/AuthContext";
+import { supportApi, authApi } from "../../services/authApi";
 import { cn } from "../../utils/cn";
 
 function MailIcon({ className }) {
@@ -58,20 +60,26 @@ const CONTACT_METHODS = [
     icon: ChatIcon,
     title: "Live Chat",
     detail: "Message our team directly",
-    href: "/messages",
+    href: "/messages?contact=support",
   },
 ];
 
-/**
- * Contact Us — no screenshot was supplied for this page, built to a
- * reasonable generic standard matching the site's visual language.
- * The form is real local state (validates, shows a success state) but
- * doesn't send anywhere — there's no backend wired up yet.
- */
 export default function ContactContent() {
+  const { user, isAuthed } = useAuth();
   const [formData, setFormData] = useState({ name: "", email: "", message: "" });
   const [errors, setErrors] = useState({});
+  const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
+
+  useEffect(() => {
+    if (user) {
+      setFormData((prev) => ({
+        ...prev,
+        name: prev.name || user.name || "",
+        email: prev.email || user.email || "",
+      }));
+    }
+  }, [user]);
 
   function handleChange(e) {
     const { name, value } = e.target;
@@ -79,7 +87,7 @@ export default function ContactContent() {
     if (errors[name]) setErrors((prev) => ({ ...prev, [name]: "" }));
   }
 
-  function handleSubmit(e) {
+  async function handleSubmit(e) {
     e.preventDefault();
     const newErrors = {};
     if (!formData.name.trim()) newErrors.name = "Name is required";
@@ -92,7 +100,26 @@ export default function ContactContent() {
       setErrors(newErrors);
       return;
     }
-    setSubmitted(true);
+
+    setSubmitting(true);
+    try {
+      if (isAuthed) {
+        await supportApi.sendMessage(formData.message.trim());
+      } else {
+        await authApi.submitSupportTicket({
+          name: formData.name.trim(),
+          email: formData.email.trim(),
+          message: formData.message.trim(),
+          subject: "Contact Us Form Inquiry",
+          category: "General Inquiry",
+        });
+      }
+      setSubmitted(true);
+    } catch (err) {
+      setErrors({ form: err.message || "Failed to send message. Please try again." });
+    } finally {
+      setSubmitting(false);
+    }
   }
 
   return (
@@ -121,7 +148,7 @@ export default function ContactContent() {
               <Wrapper
                 key={method.title}
                 {...linkProp}
-                className="flex items-center gap-3 rounded-xl border border-ink-900/10 bg-white p-4 hover:border-forest-300 hover:shadow-card"
+                className="flex items-center gap-3 rounded-xl border border-ink-900/10 bg-white p-4 hover:border-forest-300 hover:shadow-card transition-all"
               >
                 {(() => {
                   const Icon = method.icon;
@@ -154,17 +181,34 @@ export default function ContactContent() {
               </span>
               <h2 className="mt-4 text-lg font-bold text-ink-900">Message sent</h2>
               <p className="mt-1.5 max-w-xs text-sm text-ink-500">
-                Thanks for reaching out — our team typically replies within one business day.
+                {isAuthed
+                  ? "Thanks for reaching out — our administrative support team has received your message."
+                  : "Thanks for reaching out — our team typically replies within one business day."}
               </p>
-              <Link
-                to="/"
-                className="mt-5 text-sm font-semibold text-forest-600 hover:text-forest-700"
-              >
-                Back to Home
-              </Link>
+              <div className="mt-6 flex items-center gap-3">
+                {isAuthed && (
+                  <Link
+                    to="/messages?contact=support"
+                    className="inline-flex items-center justify-center rounded-lg bg-forest-600 px-4 py-2 text-sm font-semibold text-white hover:bg-forest-700 transition-colors"
+                  >
+                    Open Support Chat
+                  </Link>
+                )}
+                <Link
+                  to="/"
+                  className="inline-flex items-center justify-center rounded-lg border border-ink-900/15 bg-white px-4 py-2 text-sm font-semibold text-ink-700 hover:bg-mist-50 transition-colors"
+                >
+                  Back to Home
+                </Link>
+              </div>
             </div>
           ) : (
             <form onSubmit={handleSubmit} className="space-y-4">
+              {errors.form && (
+                <div className="rounded-lg bg-red-50 p-3 text-xs text-red-700 border border-red-200">
+                  {errors.form}
+                </div>
+              )}
               <div>
                 <label htmlFor="name" className="mb-1.5 block text-sm font-medium text-ink-700">
                   Full name
@@ -222,8 +266,8 @@ export default function ContactContent() {
                 {errors.message && <p className="mt-1 text-xs text-red-600">{errors.message}</p>}
               </div>
 
-              <Button type="submit" variant="primary" size="md" className="w-full">
-                Send Message
+              <Button type="submit" variant="primary" size="md" disabled={submitting} className="w-full">
+                {submitting ? "Sending..." : "Send Message"}
               </Button>
             </form>
           )}

@@ -1,6 +1,7 @@
 import crypto from "crypto";
 import prisma from "../config/prisma.js";
 import { streamServerClient, upsertStreamUser, createStreamToken } from "../config/stream.js";
+import { bidEvents } from "../config/events.js";
 import { AppError } from "../middlewares/errorHandler.js";
 
 function slugify(text) {
@@ -50,7 +51,23 @@ export async function createOrGetChannel(req, res, next) {
     let targetLand = null;
     let targetProject = null;
 
-    if (landId) {
+    const isSupportRequest =
+      targetUserId === "support" || targetSlug === "support" || req.body.isSupport === true;
+
+    if (isSupportRequest) {
+      const adminUser =
+        (await prisma.user.findFirst({
+          where: { role: "ADMIN", id: { not: req.user.id } },
+        })) ||
+        (await prisma.user.findFirst({ where: { role: "ADMIN" } })) ||
+        (await prisma.user.findFirst({ where: { id: { not: req.user.id } } }));
+      if (adminUser) {
+        targetUser = adminUser;
+        resolvedTargetUserId = adminUser.id;
+      }
+    }
+
+    if (landId && !isSupportRequest) {
       targetLand = await prisma.landListing.findFirst({
         where: { OR: [{ id: landId }, { slug: landId }] },
         include: { owner: true },
@@ -64,7 +81,7 @@ export async function createOrGetChannel(req, res, next) {
       }
     }
 
-    if (projectId) {
+    if (projectId && !isSupportRequest) {
       targetProject = await prisma.constructionProject.findFirst({
         where: { OR: [{ id: projectId }, { slug: projectId }] },
         include: { client: true },
@@ -75,7 +92,7 @@ export async function createOrGetChannel(req, res, next) {
       }
     }
 
-    if (!resolvedTargetUserId && targetSlug) {
+    if (!resolvedTargetUserId && targetSlug && !isSupportRequest) {
       // Find user by slug/name or contractor profile
       const allUsers = await prisma.user.findMany({
         include: { contractorProfile: true, landListings: true },
@@ -93,8 +110,7 @@ export async function createOrGetChannel(req, res, next) {
     }
 
     // Resolve targetUser from Prisma flexibly by ID, email, name, or slug
-    let targetUser = null;
-    if (resolvedTargetUserId && resolvedTargetUserId !== req.user.id) {
+    if (!targetUser && resolvedTargetUserId && resolvedTargetUserId !== req.user.id) {
       targetUser = await prisma.user.findFirst({
         where: {
           OR: [
@@ -148,21 +164,27 @@ export async function createOrGetChannel(req, res, next) {
     await upsertStreamUser(targetUser);
     await upsertStreamUser(req.user);
 
-    // UNIQUE CHANNEL ID: Derived ONLY from sorted member IDs (userA_userB)
-    // This guarantees strictly ONE channel per buyer/seller relationship!
+    const isSupport = isSupportRequest || targetUser.role === "ADMIN" || req.user.role === "ADMIN";
+    const supportClientUserId = req.user.role === "ADMIN" ? targetUser.id : req.user.id;
+
+    // UNIQUE CHANNEL ID: Derived ONLY from sorted member IDs or dedicated support channel
     const members = [req.user.id, resolvedTargetUserId].sort();
     const rawKey = `direct_${members.join("_")}`;
     const hash = crypto.createHash("md5").update(rawKey).digest("hex");
-    const channelId = `tm_${hash}`;
+    const channelId = isSupport ? `support_${supportClientUserId}` : `tm_${hash}`;
 
     const channelData = {
       members,
       created_by_id: req.user.id,
-      name: targetLand
+      name: isSupport
+        ? "Support (Admin)"
+        : targetLand
         ? `Inquiry: ${targetLand.title}`
         : targetProject
         ? `Project: ${targetProject.title}`
         : `${req.user.name} & ${targetUser?.name || "User"}`,
+      isSupport: Boolean(isSupport),
+      supportUserId: isSupport ? supportClientUserId : undefined,
       landId: targetLand ? targetLand.id : undefined,
       landTitle: targetLand ? targetLand.title : undefined,
       landSlug: targetLand ? targetLand.slug : undefined,
@@ -189,32 +211,34 @@ export async function createOrGetChannel(req, res, next) {
     }
 
     // Sync Prisma conversation record
+    let prismaConv = null;
     try {
-      const existingConv = await prisma.conversation.findFirst({
+      prismaConv = await prisma.conversation.findFirst({
         where: {
           OR: [
             { buyerId: req.user.id, sellerId: resolvedTargetUserId },
             { buyerId: resolvedTargetUserId, sellerId: req.user.id },
           ],
+          ...(isSupport ? { landId: null, projectId: null } : {}),
         },
       });
 
-      if (!existingConv) {
-        await prisma.conversation.create({
+      if (!prismaConv) {
+        prismaConv = await prisma.conversation.create({
           data: {
             buyerId: req.user.id,
             sellerId: resolvedTargetUserId,
-            landId: targetLand ? targetLand.id : null,
-            projectId: targetProject ? targetProject.id : null,
+            landId: !isSupport && targetLand ? targetLand.id : null,
+            projectId: !isSupport && targetProject ? targetProject.id : null,
           },
         });
       } else {
-        await prisma.conversation.update({
-          where: { id: existingConv.id },
+        prismaConv = await prisma.conversation.update({
+          where: { id: prismaConv.id },
           data: {
             lastMessageAt: new Date(),
-            ...(targetProject ? { projectId: targetProject.id } : {}),
-            ...(targetLand ? { landId: targetLand.id } : {}),
+            ...(!isSupport && targetProject ? { projectId: targetProject.id } : {}),
+            ...(!isSupport && targetLand ? { landId: targetLand.id } : {}),
           },
         });
       }
@@ -227,11 +251,40 @@ export async function createOrGetChannel(req, res, next) {
         text: initialMessage.trim(),
         user_id: req.user.id,
       });
+
+      if (prismaConv) {
+        try {
+          await prisma.message.create({
+            data: {
+              conversationId: prismaConv.id,
+              senderId: req.user.id,
+              body: initialMessage.trim(),
+              isRead: false,
+            },
+          });
+        } catch (msgErr) {
+          console.warn("Prisma message create error:", msgErr.message);
+        }
+      }
+
+      if (isSupport && req.user.role !== "ADMIN") {
+        bidEvents.broadcast({
+          type: "SUPPORT_MESSAGE_RECEIVED",
+          conversationId: prismaConv?.id,
+          userId: req.user.id,
+          userName: req.user.name,
+          userEmail: req.user.email,
+          userRole: req.user.role,
+          message: initialMessage.trim(),
+          timestamp: new Date().toISOString(),
+        });
+      }
     }
 
     res.status(201).json({
       channelId: channel.id,
       channelCid: channel.cid,
+      conversationId: prismaConv?.id,
       channel: {
         id: channel.id,
         cid: channel.cid,

@@ -102,62 +102,78 @@ function FAQItem({ item, isOpen, onToggle }) {
  * "Still need help?" hands off to the real Messages inbox, which
  * already has a TerraMatch Support conversation pre-loaded.
  */
+import ContactSupportModal from "../common/ContactSupportModal";
+
 export default function HelpCenterContent() {
   const [openKey, setOpenKey] = useState(null);
+  const [modalOpen, setModalOpen] = useState(false);
 
   function toggle(key) {
     setOpenKey((current) => (current === key ? null : key));
   }
 
   return (
-    <div className="container-page py-14 sm:py-20">
-      <div className="mx-auto max-w-2xl text-center">
-        <Badge tone="soft" className="mx-auto w-fit">
-          Help Center
-        </Badge>
-        <h1 className="mt-5 text-3xl font-extrabold text-ink-900 sm:text-4xl">
-          How can we help?
-        </h1>
-        <p className="mt-3 text-sm text-ink-700">
-          Answers to common questions about bidding, hiring contractors, and managing your account.
-        </p>
-      </div>
-
-      <div className="mx-auto mt-12 max-w-2xl space-y-10">
-        {FAQ_CATEGORIES.map((section) => (
-          <div key={section.category}>
-            <h2 className="text-sm font-bold uppercase tracking-wide text-forest-600">
-              {section.category}
-            </h2>
-            <div className="mt-2">
-              {section.questions.map((item) => {
-                const key = `${section.category}-${item.q}`;
-                return (
-                  <FAQItem
-                    key={key}
-                    item={item}
-                    isOpen={openKey === key}
-                    onToggle={() => toggle(key)}
-                  />
-                );
-              })}
-            </div>
-          </div>
-        ))}
-      </div>
-
-      <div className="mx-auto mt-14 flex max-w-2xl flex-col items-center gap-4 rounded-2xl border border-ink-900/10 bg-mist-50 p-8 text-center sm:flex-row sm:justify-between sm:text-left">
-        <div>
-          <h2 className="text-base font-bold text-ink-900">Still need help?</h2>
-          <p className="mt-1 text-sm text-ink-600">
-            Our team usually replies within an hour.
+    <>
+      <div className="container-page py-14 sm:py-20">
+        <div className="mx-auto max-w-2xl text-center">
+          <Badge tone="soft" className="mx-auto w-fit">
+            Help Center
+          </Badge>
+          <h1 className="mt-5 text-3xl font-extrabold text-ink-900 sm:text-4xl">
+            How can we help?
+          </h1>
+          <p className="mt-3 text-sm text-ink-700">
+            Answers to common questions about bidding, hiring contractors, and managing your account.
           </p>
         </div>
-        <Button as={Link} to="/messages" variant="primary" size="md" className="shrink-0">
-          <ChatIcon className="h-4 w-4" />
-          Chat with Support
-        </Button>
+
+        <div className="mx-auto mt-12 max-w-2xl space-y-10">
+          {FAQ_CATEGORIES.map((section) => (
+            <div key={section.category}>
+              <h2 className="text-sm font-bold uppercase tracking-wide text-forest-600">
+                {section.category}
+              </h2>
+              <div className="mt-2">
+                {section.questions.map((item) => {
+                  const key = `${section.category}-${item.q}`;
+                  return (
+                    <FAQItem
+                      key={key}
+                      item={item}
+                      isOpen={openKey === key}
+                      onToggle={() => toggle(key)}
+                    />
+                  );
+                })}
+              </div>
+            </div>
+          ))}
+        </div>
+
+        <div className="mx-auto mt-14 flex max-w-2xl flex-col items-center gap-4 rounded-2xl border border-ink-900/10 bg-mist-50 p-8 text-center sm:flex-row sm:justify-between sm:text-left">
+          <div>
+            <h2 className="text-base font-bold text-ink-900">Still need help?</h2>
+            <p className="mt-1 text-sm text-ink-600">
+              Our team usually replies within an hour.
+            </p>
+          </div>
+          <Button
+            type="button"
+            onClick={() => setModalOpen(true)}
+            variant="primary"
+            size="md"
+            className="shrink-0"
+          >
+            <ChatIcon className="h-4 w-4" />
+            Chat with Support
+          </Button>
+        </div>
       </div>
-    </div>
+
+      <ContactSupportModal
+        isOpen={modalOpen}
+        onClose={() => setModalOpen(false)}
+      />
+    </>
   );
 }

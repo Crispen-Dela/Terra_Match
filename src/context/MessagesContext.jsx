@@ -1,6 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, useRef } from "react";
 import { StreamChat } from "stream-chat";
 import { chatApi } from "../services/chatApi";
+import { supportApi } from "../services/authApi";
 import { useAuth } from "./AuthContext";
 import { formatGHS } from "../constants/landDetails";
 
@@ -151,8 +152,16 @@ export function MessagesProvider({ children }) {
       const members = Object.values(state.members || {});
       const otherMember = members.find((m) => m.user?.id !== user.id)?.user || members[0]?.user || {};
       const otherUserId = otherMember.id || chan.id;
-      const otherName = otherMember.name || "TerraMatch User";
-      const isSupport = otherMember.customRole === "ADMIN" || chan.data?.name === "TerraMatch Support";
+      const rawName = otherMember.name || "TerraMatch User";
+      const isSupport = Boolean(
+        otherMember.customRole === "ADMIN" ||
+        chan.data?.isSupport === true ||
+        chan.data?.name === "Support (Admin)" ||
+        chan.data?.name === "TerraMatch Support" ||
+        chan.id.startsWith("support_") ||
+        chan.id.startsWith("tm_support_")
+      );
+      const otherName = isSupport ? "Support (Admin)" : rawName;
 
       const messages = (state.messages || []).map((m) => ({
         id: m.id,
@@ -189,16 +198,18 @@ export function MessagesProvider({ children }) {
         cid: chan.cid,
         channel: chan,
         name: otherName,
-        subtitle: landContext
+        subtitle: isSupport
+          ? "TerraMatch Platform Support"
+          : landContext
           ? `Re: ${landContext.title}`
           : projectContext
           ? `Project: ${projectContext.title}`
           : otherMember.customRole || "Direct Message",
         isSupport,
-        avatarInitials: initialsFrom(otherName),
+        avatarInitials: isSupport ? "SUP" : initialsFrom(otherName),
         avatarUrl: otherMember.image || null,
         otherUserId,
-        otherUserRole: otherMember.customRole,
+        otherUserRole: isSupport ? "ADMIN" : otherMember.customRole,
         lastMessageTime: lastMsg ? lastMsg.time : formatMessageTime(chan.data?.last_message_at || chan.data?.created_at),
         unreadCount: chan.countUnread ? chan.countUnread() : 0,
         landContext,
@@ -328,8 +339,12 @@ export function MessagesProvider({ children }) {
     async (contactParam, { projectId, landId } = {}) => {
       if (!contactParam && !projectId && !landId) return null;
 
+      const isSupportQuery =
+        contactParam === "support" || contactParam === "admin" || contactParam === "help";
+
       const directMatch = conversations.find(
         (c) =>
+          (isSupportQuery && (c.isSupport || c.otherUserRole === "ADMIN" || c.id.startsWith("support_"))) ||
           (contactParam && (c.id === contactParam || c.cid === contactParam || c.otherUserId === contactParam)) ||
           (!contactParam && projectId && c.projectContext?.id === projectId) ||
           (!contactParam && landId && c.landContext?.id === landId)
@@ -341,8 +356,9 @@ export function MessagesProvider({ children }) {
 
       try {
         const res = await startConversation({
-          targetUserId: contactParam,
+          targetUserId: isSupportQuery ? "support" : contactParam,
           targetSlug: contactParam,
+          isSupport: isSupportQuery,
           projectId,
           landId,
         });
@@ -359,6 +375,24 @@ export function MessagesProvider({ children }) {
     [conversations, startConversation]
   );
 
+  const startSupportConversation = useCallback(
+    async (initialMessage) => {
+      try {
+        const res = await startConversation({
+          targetUserId: "support",
+          isSupport: true,
+          initialMessage,
+        });
+        return res;
+      } catch (err) {
+        // Fallback to supportApi directly
+        const fallback = await supportApi.sendMessage(initialMessage);
+        return fallback;
+      }
+    },
+    [startConversation]
+  );
+
   const value = useMemo(
     () => ({
       client,
@@ -369,6 +403,7 @@ export function MessagesProvider({ children }) {
       setActiveChannelId,
       startConversation,
       startBuyNowRequest,
+      startSupportConversation,
       sendMessage,
       markRead,
       ensureConversation,
@@ -381,6 +416,7 @@ export function MessagesProvider({ children }) {
       activeChannelId,
       startConversation,
       startBuyNowRequest,
+      startSupportConversation,
       sendMessage,
       markRead,
       ensureConversation,
